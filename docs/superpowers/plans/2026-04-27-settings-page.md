@@ -6,7 +6,172 @@
 
 **Architecture:** Two LiveViews (SettingsLive for scalar settings, EngineSettingsLive for engine CRUD) backed by a new `Settings.save!/1` function on the existing GenServer. Both read `Settings.get()` in mount and persist via YAML write + reload.
 
-**Tech Stack:** Phoenix LiveView 1.8, PhoenixDuskMoon components, YamlElixir
+**Tech Stack:** Phoenix LiveView 1.8, PhoenixDuskMoon components, YamlElixir (read), custom YamlEncoder (write)
+
+---
+
+### Task 0: Create YamlEncoder module
+
+**Files:**
+- Create: `apps/search_aggregator/lib/search_aggregator/yaml_encoder.ex`
+- Create: `apps/search_aggregator/test/search_aggregator/yaml_encoder_test.exs`
+
+`yaml_elixir` v2.12.1 is read-only — no write functions. We need a small custom YAML encoder for the settings structure (maps, lists, scalars, max 3 levels deep).
+
+- [ ] **Step 1: Create the test file**
+
+```elixir
+# apps/search_aggregator/test/search_aggregator/yaml_encoder_test.exs
+defmodule SearchAggregator.YamlEncoderTest do
+  use ExUnit.Case, async: true
+
+  alias SearchAggregator.YamlEncoder
+
+  test "encodes flat map" do
+    assert YamlEncoder.encode_to_string(%{"key" => "value", "num" => 42}) ==
+             "key: value\nnum: 42"
+  end
+
+  test "encodes nested maps" do
+    map = %{
+      "general" => %{"instance_name" => "Test", "timeout_ms" => 5000},
+      "ui" => %{"theme" => "dawn"}
+    }
+
+    result = YamlEncoder.encode_to_string(map)
+    assert result =~ "general:"
+    assert result =~ "  instance_name: Test"
+    assert result =~ "  timeout_ms: 5000"
+    assert result =~ "ui:"
+    assert result =~ "  theme: dawn"
+  end
+
+  test "encodes list of maps" do
+    map = %{
+      "engines" => [
+        %{"name" => "wiki", "mode" => "http", "disabled" => false},
+        %{"name" => "hn", "mode" => "http", "disabled" => true}
+      ]
+    }
+
+    result = YamlEncoder.encode_to_string(map)
+    assert result =~ "engines:"
+    assert result =~ "- name: wiki"
+    assert result =~ "  mode: http"
+    assert result =~ "  disabled: false"
+    assert result =~ "- name: hn"
+    assert result =~ "  disabled: true"
+  end
+
+  test "encodes booleans and nil correctly" do
+    assert YamlEncoder.encode_to_string(%{"enabled" => true}) =~ "enabled: true"
+    assert YamlEncoder.encode_to_string(%{"enabled" => false}) =~ "enabled: false"
+    assert YamlEncoder.encode_to_string(%{"path" => nil}) =~ "path:"
+  end
+
+  test "writes to file" do
+    tmp = "test_yaml_encoder_output.yaml"
+    YamlEncoder.encode_to_file!(%{"key" => "value"}, tmp)
+    assert File.exists?(tmp)
+    contents = File.read!(tmp)
+    assert contents =~ "key: value"
+    File.rm!(tmp)
+  end
+end
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `mix test test/search_aggregator/yaml_encoder_test.exs`
+Expected: FAIL (YamlEncoder module not found)
+
+- [ ] **Step 3: Implement YamlEncoder**
+
+```elixir
+# apps/search_aggregator/lib/search_aggregator/yaml_encoder.ex
+defmodule SearchAggregator.YamlEncoder do
+  @moduledoc false
+
+  def encode_to_file!(map, path) do
+    File.write!(path, encode_to_string(map))
+  end
+
+  def encode_to_string(map) do
+    map
+    |> Enum.map(&encode_section/1)
+    |> Enum.join("\n")
+  end
+
+  defp encode_section({key, value}) when is_list(value) do
+    "#{key}:\n#{encode_list(value, 1)}"
+  end
+
+  defp encode_section({key, value}) when is_map(value) do
+    "#{key}:\n#{encode_map(value, 1)}"
+  end
+
+  defp encode_section({key, value}), do: "#{key}: #{scalar(value)}"
+
+  defp encode_map(map, indent) do
+    prefix = String.duplicate("  ", indent)
+
+    map
+    |> Enum.map(fn {key, value} ->
+      cond do
+        is_map(value) ->
+          "#{prefix}#{key}:\n#{encode_map(value, indent + 1)}"
+
+        true ->
+          "#{prefix}#{key}: #{scalar(value)}"
+      end
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp encode_list(list, indent) do
+    prefix = String.duplicate("  ", indent)
+
+    list
+    |> Enum.map(fn item ->
+      if is_map(item) do
+        lines =
+          item
+          |> Enum.map(fn {key, value} ->
+            "#{prefix}  #{key}: #{scalar(value)}"
+          end)
+          |> Enum.join("\n")
+
+        "#{prefix}- #{String.trim(hd(String.split(lines, "\n")))}" <>
+          (if String.contains?(lines, "\n"),
+             do: "\n" <> (lines |> String.split("\n") |> tl() |> Enum.join("\n")),
+             else: "")
+      else
+        "#{prefix}- #{scalar(item)}"
+      end
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp scalar(nil), do: ""
+  defp scalar(true), do: "true"
+  defp scalar(false), do: "false"
+  defp scalar(value) when is_integer(value), do: Integer.to_string(value)
+  defp scalar(value) when is_float(value), do: Float.to_string(value)
+  defp scalar(value) when is_binary(value), do: value
+end
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `mix test test/search_aggregator/yaml_encoder_test.exs`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/search_aggregator/lib/search_aggregator/yaml_encoder.ex apps/search_aggregator/test/search_aggregator/yaml_encoder_test.exs
+git commit -m "feat: add YamlEncoder for YAML serialization"
+```
 
 ---
 
@@ -20,18 +185,19 @@
 
 ```elixir
 # Add to apps/search_aggregator/test/search_aggregator/settings_test.exs
-# Note: load_file!/1 and settings_path/0 are already public functions on Settings
-
+# Tests the file-level I/O directly (no GenServer required).
+# GenServer integration is tested via LiveView tests in Tasks 4-5.
 @tag :tmp_dir
-test "save!/1 persists settings to YAML and reloads", %{tmp_dir: tmp_dir} do
+test "save!/1 writes settings to YAML and returns reloaded state", %{tmp_dir: tmp_dir} do
   path = Path.join(tmp_dir, "settings.yaml")
   settings = SearchAggregator.Settings.load_file!("test/support/fixtures/settings.yaml")
   modified = put_in(settings, ["general", "instance_name"], "Saved Test")
 
-  # Write to tmp_dir to avoid mutating the committed fixture
+  # Use the optional path override for test isolation
   saved = SearchAggregator.Settings.save!(modified, path)
 
   assert saved["general"]["instance_name"] == "Saved Test"
+  # Verify file was actually written
   reloaded = SearchAggregator.Settings.load_file!(path)
   assert reloaded["general"]["instance_name"] == "Saved Test"
 end
@@ -39,30 +205,29 @@ end
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `mix test test/search_aggregator/settings_test.exs:14`
+Run: `mix test test/search_aggregator/settings_test.exs`
 Expected: FAIL with "function Settings.save!/1 is undefined"
 
 - [ ] **Step 3: Implement `save!/1`**
 
+Add to `SearchAggregator.Settings` after `reload!/0` (line 47):
+
 ```elixir
-# Add to SearchAggregator.Settings module (apps/search_aggregator/lib/search_aggregator/settings.ex)
+# Add to SearchAggregator.Settings after reload!/0 (line 47):
 
 def save!(settings, path \\ nil) do
-  GenServer.call(__MODULE__, {:save, settings, path})
-end
-
-# Add handle_call clause:
-@impl true
-def handle_call({:save, settings, path}, _from, state) do
   stripped = Map.delete(settings, "__meta__")
   target = path || settings_path()
   tmp = target <> ".tmp"
 
-  :ok = YamlElixir.write_to_file!(tmp, stripped)
+  YamlEncoder.encode_to_file!(stripped, tmp)
   File.rename!(tmp, target)
 
-  new_state = load_settings!()
-  {:reply, new_state, new_state}
+  # Reload GenServer state if running (no-op in tests without the app)
+  if pid = Process.whereis(__MODULE__), do: GenServer.call(pid, :reload)
+
+  loaded = load_file!(target)
+  Map.put(loaded, "__meta__", %{"path" => target})
 end
 ```
 
@@ -399,7 +564,7 @@ defmodule SearchAggregatorWeb.SettingsLive do
       "ui" => %{
         "theme" => settings["ui"]["theme"],
         "default_category" => settings["ui"]["default_category"],
-        "categories_as_tabs" => YamlElixir.write_to_string!(settings["ui"]["categories_as_tabs"])
+        "categories_as_tabs" => YamlEncoder.encode_to_string(settings["ui"]["categories_as_tabs"])
       },
       "browser_simulator" => %{
         "enabled" => settings["browser_simulator"]["enabled"],
@@ -453,7 +618,7 @@ defmodule SearchAggregatorWeb.SettingsLive do
 end
 ```
 
-- [ ] **Step 4: Add YamlElixir alias** — ensure `alias YamlElixir` or use fully-qualified calls. The code above uses `YamlElixir.write_to_string!` and `YamlElixir.read_from_string`.
+- [ ] **Step 4: Add aliases** — SettingsLive needs `alias SearchAggregator.YamlEncoder` for `YamlEncoder.encode_to_string/1`. `YamlElixir.read_from_string/1` is already available (read-only).
 
 - [ ] **Step 5: Run test to verify it passes**
 
@@ -603,7 +768,7 @@ defmodule SearchAggregatorWeb.EngineSettingsLive do
         socket.assigns.engines ++ [engine]
       end
 
-    save_engines(socket, engines)
+    socket = save_engines(socket, engines)
     {:noreply,
      socket
      |> assign(engines: engines, show_add_modal: false, editing_engine: nil)
@@ -613,8 +778,8 @@ defmodule SearchAggregatorWeb.EngineSettingsLive do
   @impl true
   def handle_event("delete_engine", %{"name" => name}, socket) do
     engines = Enum.reject(socket.assigns.engines, &(&1["name"] == name))
-    save_engines(socket, engines)
-    {:noreply, assign(socket, engines: engines) |> put_flash(:info, "Engine removed.")}
+    socket = save_engines(socket, engines)
+    {:noreply, socket |> assign(engines: engines) |> put_flash(:info, "Engine removed.")}
   end
 
   @impl true
