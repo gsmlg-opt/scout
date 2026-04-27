@@ -30,12 +30,23 @@ config :search_aggregator, :settings_path, settings_path
 config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "6980"))]
 
-if System.get_env("MIX_BUN_PATH") do
-  config :bun, path: System.get_env("MIX_BUN_PATH")
+bun_version =
+  System.get_env("MIX_BUN_VERSION") ||
+    case System.cmd("bun", ["--version"]) do
+      {output, 0} -> String.trim(output)
+      _ -> nil
+    end
+
+if bun_version do
+  config :bun, version: bun_version
 end
 
-if System.get_env("MIX_TAILWIND_PATH") do
-  config :tailwind, path: System.get_env("MIX_TAILWIND_PATH")
+if path = System.get_env("MIX_BUN_PATH") do
+  config :bun, path: path
+end
+
+if path = System.get_env("MIX_TAILWIND_PATH") do
+  config :tailwind, path: path
 end
 
 if config_env() == :prod do
