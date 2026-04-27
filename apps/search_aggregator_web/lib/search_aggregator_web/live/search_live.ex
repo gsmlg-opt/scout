@@ -13,6 +13,7 @@ defmodule SearchAggregatorWeb.SearchLive do
      assign(socket,
        page_title: "Search",
        query: "",
+       form: to_form(%{"q" => ""}),
        category: settings["ui"]["default_category"],
        language: settings["general"]["default_locale"],
        selected_engines: MapSet.new(),
@@ -92,6 +93,7 @@ defmodule SearchAggregatorWeb.SearchLive do
     if query == "" do
       assign(socket,
         query: "",
+        form: to_form(%{"q" => ""}),
         category: opts["category"],
         language: opts["language"],
         selected_engines: opts["engine_names"],
@@ -107,6 +109,7 @@ defmodule SearchAggregatorWeb.SearchLive do
 
       assign(socket,
         query: query,
+        form: to_form(%{"q" => query}),
         category: run.opts["category"],
         language: run.opts["language"],
         selected_engines: run.opts["engine_names"],
@@ -152,66 +155,65 @@ defmodule SearchAggregatorWeb.SearchLive do
       <main class="search-page">
         <section class="hero">
           <p class="eyebrow">{@settings["general"]["instance_name"]}</p>
-          <h1>SearXNG-style metasearch, implemented in Elixir.</h1>
-          <p>
+          <h1 class="text-on-surface">SearXNG-style metasearch, implemented in Elixir.</h1>
+          <p class="text-on-surface-variant">
             Parallel engine execution, YAML-driven runtime configuration, graceful degradation,
             and privacy-first defaults. This first slice already queries multiple providers and
             merges results live as engines finish.
           </p>
 
-          <.form for={%{}} as={:search} phx-submit="search" class="search-form">
+          <.form for={@form} as={:search} phx-submit="search" class="search-form">
             <div class="category-tabs">
-              <button
+              <.dm_btn
                 :for={{name, _targets} <- @settings["ui"]["categories_as_tabs"]}
-                type="button"
+                variant={if @category == name, do: "primary", else: "ghost"}
+                size="sm"
                 phx-click="set_category"
                 phx-value-category={name}
-                class={["tab-button", @category == name && "tab-button-active"]}
               >
                 {humanize_category(name)}
-              </button>
+              </.dm_btn>
             </div>
             <div class="search-bar">
-              <input
-                class="search-input"
-                type="text"
-                name="q"
-                value={@query}
+              <.dm_input
+                field={@form[:q]}
                 placeholder="Search without being profiled"
                 autocomplete="off"
               />
-              <button class="search-button" type="submit">Search</button>
+              <.dm_btn variant="primary" type="submit">Search</.dm_btn>
             </div>
             <div class="control-row">
-              <label class="control-block">
+              <div class="control-block">
                 <span class="eyebrow">Limit</span>
-                <select class="control-select" phx-change="set_limit" name="limit">
-                  <option
+                <div class="flex flex-wrap gap-2">
+                  <.dm_btn
                     :for={limit <- [5, 8, 10, 20]}
-                    selected={@result_limit == limit}
-                    value={limit}
+                    variant={if @result_limit == limit, do: "primary", else: "ghost"}
+                    size="sm"
+                    phx-click="set_limit"
+                    phx-value-limit={limit}
                   >
-                    {limit} results
-                  </option>
-                </select>
-              </label>
+                    {limit}
+                  </.dm_btn>
+                </div>
+              </div>
               <div class="control-block">
                 <span class="eyebrow">Engines</span>
                 <div class="engine-chips">
-                  <button
+                  <.dm_btn
                     :for={engine <- available_engines(@settings, @category)}
-                    type="button"
+                    variant={
+                      if MapSet.size(@selected_engines) == 0 or
+                           MapSet.member?(@selected_engines, engine["name"]),
+                         do: "primary",
+                         else: "ghost"
+                    }
+                    size="sm"
                     phx-click="toggle_engine"
                     phx-value-engine={engine["name"]}
-                    class={[
-                      "engine-chip",
-                      (MapSet.size(@selected_engines) == 0 or
-                         MapSet.member?(@selected_engines, engine["name"])) &&
-                        "engine-chip-active"
-                    ]}
                   >
                     {engine["name"]}
-                  </button>
+                  </.dm_btn>
                 </div>
               </div>
             </div>
@@ -219,63 +221,70 @@ defmodule SearchAggregatorWeb.SearchLive do
         </section>
 
         <section class="meta-strip">
-          <article class="panel">
+          <.dm_card>
             <p class="eyebrow">Enabled Engines</p>
             <p class="metric">{active_engine_count(@settings, @category, @selected_engines)}</p>
-          </article>
-          <article class="panel">
+          </.dm_card>
+          <.dm_card>
             <p class="eyebrow">Category</p>
             <p class="metric">{humanize_category(@category)}</p>
-          </article>
-          <article class="panel">
+          </.dm_card>
+          <.dm_card>
             <p class="eyebrow">Progress</p>
             <p class="metric">{@completed_engines}/{@completed_engines + @pending_engines}</p>
-          </article>
+          </.dm_card>
         </section>
 
         <section class="results-shell">
           <div class="results-list">
             <%= if @results == [] do %>
-              <div class="panel empty-state">
+              <.dm_card class="empty-state">
                 Results will appear here progressively as each engine responds.
-              </div>
+              </.dm_card>
             <% else %>
-              <article :for={result <- @results} class="result-card">
+              <.dm_card :for={result <- @results}>
+                <:title>
+                  <a href={result.url} target="_blank" rel="noreferrer">{result.title}</a>
+                </:title>
                 <p class="eyebrow">{result.source}</p>
-                <h2><a href={result.url} target="_blank" rel="noreferrer">{result.title}</a></h2>
-                <p>{result.content}</p>
-                <div class="result-meta">
-                  <span class="badge">{result.engine}</span>
-                  <span>{result.url}</span>
+                <p class="text-on-surface-variant">{result.content}</p>
+                <div class="flex flex-wrap gap-2.5 items-center mt-3">
+                  <.dm_badge variant="primary">{result.engine}</.dm_badge>
+                  <span class="text-on-surface-variant text-sm truncate">{result.url}</span>
                 </div>
-              </article>
+              </.dm_card>
             <% end %>
           </div>
 
           <aside class="status-list">
-            <article class="status-card">
+            <.dm_card>
               <p class="eyebrow">Config</p>
-              <h3>{Path.basename(@settings["__meta__"]["path"])}</h3>
-              <p>Runtime settings are loaded from YAML, not from compile-time Elixir config.</p>
-              <div class="status-meta">
-                <span>API: /search?q=phoenix</span>
-                <span>Limit: {@result_limit}</span>
+              <h3 class="text-lg font-semibold">{Path.basename(@settings["__meta__"]["path"])}</h3>
+              <p class="text-on-surface-variant">
+                Runtime settings are loaded from YAML, not from compile-time Elixir config.
+              </p>
+              <div class="flex flex-wrap gap-2.5 items-center mt-3">
+                <span class="text-on-surface-variant text-sm">API: /search?q=phoenix</span>
+                <span class="text-on-surface-variant text-sm">Limit: {@result_limit}</span>
               </div>
-            </article>
+            </.dm_card>
 
-            <article :for={report <- @engine_reports} class="status-card">
+            <.dm_card :for={report <- @engine_reports}>
               <p class="eyebrow">{report.engine}</p>
-              <h3 class={if report.ok?, do: "status-ok", else: "status-error"}>
+              <h3 class={[
+                "text-lg font-semibold",
+                if(report.ok?, do: "text-success", else: "text-error")
+              ]}>
                 {if report.ok?, do: "Completed", else: "Failed"}
               </h3>
-              <p>
+              <p class="text-on-surface-variant">
                 {if report.ok?, do: "#{length(report.results)} results merged", else: report.error}
               </p>
-              <div class="status-meta">
-                <span>{report.mode}</span>
-                <span>{report.duration_ms} ms</span>
+              <div class="flex flex-wrap gap-2.5 items-center mt-3">
+                <.dm_badge variant="ghost">{report.mode}</.dm_badge>
+                <span class="text-on-surface-variant text-sm">{report.duration_ms} ms</span>
               </div>
-            </article>
+            </.dm_card>
           </aside>
         </section>
       </main>

@@ -9,20 +9,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Run All Tests:** `mix test`
 - **Run a Specific Test:** `mix test path/to/file_test.exs` or `mix test path/to/file_test.exs:123` (to run a specific line)
 - **Pre-commit Check (Compile, Format, Test):** `mix precommit` (Use this alias when you are done with all changes to catch warnings and run tests)
+- Default port is **6980** (override with `PORT`). Settings path overridable with `SETTINGS_PATH`.
 
 ## Architecture & Structure
 
-SearchAggregator is a Phoenix 1.8 application that queries multiple external search engines and aggregates the results, providing both an interactive UI and a JSON API.
+SearchAggregator is an **Elixir umbrella project** — a Phoenix 1.8 metasearch application that queries multiple external search engines in parallel and aggregates results. It provides both an interactive LiveView UI and a JSON API. **No database is required** — everything runs in memory from `settings.yaml`.
 
-- **`lib/search_aggregator/`** (Core Business Logic):
-  - **`search.ex`**: The main context module for performing searches across engines.
-  - **`search/engine.ex`**: The behaviour/contract that all search engine integrations must implement.
-  - **`search/engines/`**: Individual provider implementations (e.g., Hacker News, Stack Overflow, Wikipedia).
-  - **`search/http.ex`** & **`search/browser_simulator.ex`**: Network wrappers to fetch external results using the `Req` library.
-  - **`settings.ex`**: Application settings and configuration management.
-- **`lib/search_aggregator_web/`** (Web Interface):
-  - **`live/search_live.ex`**: The Phoenix LiveView module serving the interactive search interface at `/`.
-  - **`controllers/search_api_controller.ex`**: JSON API endpoint providing search results programmatically at `/search`.
+### Umbrella Apps
+
+- **`apps/search_aggregator`** — Core search orchestration: `Settings` GenServer (YAML loader), engine behaviour, HTTP dispatch, result normalization/deduplication.
+- **`apps/search_aggregator_web`** — Phoenix 1.8 web layer: LiveView (`SearchLive`) at `/`, JSON API controller at `/search`.
+
+### Search Lifecycle
+
+There are two search modes:
+
+1. **Async (`Search.start/3`)** — Used by the LiveView. Fires parallel `Task` processes (one per engine), each sends `{:search_engine_result, ref, result}` back to the caller. Results stream in progressively as engines respond.
+2. **Sync (`Search.search/2`)** — Used by the JSON API. Waits for all engines to complete, then returns the merged result list.
+
+Both modes go through:
+- `Search.normalize_options/2` — resolves category, limit, engine_names, language defaults from settings.
+- `Search.enabled_engines/2` — filters by `disabled` flag, engine registration, category, and user-selected engines.
+- `Search.run_engine/4` — dispatches to the engine module (http mode → `module.search/3`; browser mode → `BrowserSimulator` placeholder).
+- `Search.merge_results/3` — deduplicates by normalized URL, boosts score for duplicates, sorts by score, truncates to limit.
+
+### Core Modules
+
+- **`SearchAggregator.Settings`** — GenServer that loads `settings.yaml` at startup, merges with defaults, normalizes engine configs. Call `Settings.get/0` anywhere; `Settings.reload!/0` for hot reload.
+- **`SearchAggregator.Search.Engine`** — Behaviour with `@callback search(binary(), map(), map()) :: {:ok, [Result.t()]} | {:error, term()}`.
+- **`SearchAggregator.Search.Result`** — Struct: `:title`, `:url`, `:engine`, `:content`, `:source`, `:score`, `:published_at`.
+- **`SearchAggregator.Search.HTTP`** — Thin wrapper over `Req` that auto-decodes JSON responses.
+- **`SearchAggregator.Search.BrowserSimulator`** — Placeholder for future Playwright-based browser engine mode.
+- **`SearchAggregator.Search.QueryParams`** — Parses URL query params into normalized opts and serializes opts back to query string for `push_patch`.
+
+### Supervision Tree
+
+```
+SearchAggregator.Supervisor (one_for_one)
+  ├── Task.Supervisor (SearchAggregator.TaskSupervisor)
+  ├── SearchAggregator.Settings (GenServer)
+  ├── DNSCluster
+  └── Phoenix.PubSub (SearchAggregator.PubSub)
+```
 
 ## Project Guidelines
 
