@@ -11,7 +11,7 @@ config :search_aggregator,
   generators: [timestamp_type: :utc_datetime]
 
 # Configure the endpoint
-config :search_aggregator, SearchAggregatorWeb.Endpoint,
+config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [

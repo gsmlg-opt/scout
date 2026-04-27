@@ -30,7 +30,10 @@ defmodule SearchAggregator.Search.QueryParams do
     |> maybe_put("category", unless_default(category, settings["ui"]["default_category"]))
     |> maybe_put("limit", unless_default(limit, settings["search"]["result_limit"]))
     |> maybe_put("engines", encode_engines(opts["engine_names"]))
-    |> maybe_put("language", unless_default(opts["language"], settings["general"]["default_locale"]))
+    |> maybe_put(
+      "language",
+      unless_default(opts["language"], settings["general"]["default_locale"])
+    )
   end
 
   defp encode_engines(names) do

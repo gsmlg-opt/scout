@@ -161,7 +161,7 @@ defmodule SearchAggregator.Search do
     end
   end
 
-  defp merge_duplicate(left, right) do
+  defp merge_duplicate(%Result{} = left, right) do
     merged_sources =
       [left.engine | List.wrap(right.engine)]
       |> Enum.uniq()

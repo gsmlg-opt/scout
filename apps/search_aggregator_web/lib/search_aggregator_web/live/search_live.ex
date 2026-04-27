@@ -42,19 +42,32 @@ defmodule SearchAggregatorWeb.SearchLive do
       "language" => socket.assigns.language
     }
 
-    {:noreply, push_patch(socket, to: ~p"/?#{QueryParams.to_query_params(raw_query, opts, socket.assigns.settings)}")}
+    {:noreply,
+     push_patch(socket,
+       to: ~p"/?#{QueryParams.to_query_params(raw_query, opts, socket.assigns.settings)}"
+     )}
   end
 
   @impl true
   def handle_event("set_category", %{"category" => category}, socket) do
     opts = current_opts(socket) |> Map.put("category", category)
-    {:noreply, push_patch(socket, to: ~p"/?#{QueryParams.to_query_params(socket.assigns.query, opts, socket.assigns.settings)}")}
+
+    {:noreply,
+     push_patch(socket,
+       to:
+         ~p"/?#{QueryParams.to_query_params(socket.assigns.query, opts, socket.assigns.settings)}"
+     )}
   end
 
   @impl true
   def handle_event("set_limit", %{"limit" => limit}, socket) do
     opts = current_opts(socket) |> Map.put("limit", limit)
-    {:noreply, push_patch(socket, to: ~p"/?#{QueryParams.to_query_params(socket.assigns.query, opts, socket.assigns.settings)}")}
+
+    {:noreply,
+     push_patch(socket,
+       to:
+         ~p"/?#{QueryParams.to_query_params(socket.assigns.query, opts, socket.assigns.settings)}"
+     )}
   end
 
   @impl true
@@ -67,7 +80,12 @@ defmodule SearchAggregatorWeb.SearchLive do
       end
 
     opts = current_opts(socket) |> Map.put("engines", selected)
-    {:noreply, push_patch(socket, to: ~p"/?#{QueryParams.to_query_params(socket.assigns.query, opts, socket.assigns.settings)}")}
+
+    {:noreply,
+     push_patch(socket,
+       to:
+         ~p"/?#{QueryParams.to_query_params(socket.assigns.query, opts, socket.assigns.settings)}"
+     )}
   end
 
   defp apply_search(socket, query, opts, from_params?: _from_params?) do
@@ -182,7 +200,8 @@ defmodule SearchAggregatorWeb.SearchLive do
                   phx-value-engine={engine["name"]}
                   class={[
                     "engine-chip",
-                    (MapSet.size(@selected_engines) == 0 or MapSet.member?(@selected_engines, engine["name"])) &&
+                    (MapSet.size(@selected_engines) == 0 or
+                       MapSet.member?(@selected_engines, engine["name"])) &&
                       "engine-chip-active"
                   ]}
                 >
