@@ -21,5 +21,5 @@ defmodule SearchAggregatorWeb.Gettext do
 
   See the [Gettext Docs](https://hexdocs.pm/gettext) for detailed usage.
   """
-  use Gettext.Backend, otp_app: :search_aggregator
+  use Gettext.Backend, otp_app: :search_aggregator_web
 end

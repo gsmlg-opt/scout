@@ -2,7 +2,7 @@ import Config
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
-config :search_aggregator, SearchAggregatorWeb.Endpoint,
+config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "m+l4kJqJprbBYRpQxSIalWszrRkfb8JIw1QWvjsK2T2G1QaMWglEaRouP8NFvKk1",
   server: false
@@ -23,4 +23,4 @@ config :phoenix,
 
 config :search_aggregator,
        :settings_path,
-       Path.expand("../test/support/fixtures/settings.yaml", __DIR__)
+       Path.expand("../apps/search_aggregator_web/test/support/fixtures/settings.yaml", __DIR__)

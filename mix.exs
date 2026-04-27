@@ -1,27 +1,13 @@
-defmodule SearchAggregator.MixProject do
+defmodule SearchAggregator.Umbrella.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :search_aggregator,
+      apps_path: "apps",
       version: "0.1.0",
-      elixir: "~> 1.15",
-      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
-      aliases: aliases(),
       deps: deps(),
-      compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
-    ]
-  end
-
-  # Configuration for the OTP application.
-  #
-  # Type `mix help compile.app` for more information.
-  def application do
-    [
-      mod: {SearchAggregator.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      aliases: aliases()
     ]
   end
 
@@ -31,28 +17,22 @@ defmodule SearchAggregator.MixProject do
     ]
   end
 
-  # Specifies which paths to compile per environment.
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
-  defp elixirc_paths(_), do: ["lib"]
-
-  # Specifies your project dependencies.
+  # Dependencies can be Hex packages:
   #
-  # Type `mix help deps` for examples and options.
+  #   {:mydep, "~> 0.3.0"}
+  #
+  # Or git/path repositories:
+  #
+  #   {:mydep, git: "https://github.com/elixir-lang/mydep.git", tag: "0.1.0"}
+  #
+  # Type "mix help deps" for more examples and options.
+  #
+  # Dependencies listed here are available only for this project
+  # and cannot be accessed from applications inside the apps/ folder.
   defp deps do
     [
-      {:phoenix, "~> 1.8.5"},
-      {:phoenix_html, "~> 4.1"},
-      {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 1.1.0"},
-      {:lazy_html, ">= 0.1.0"},
-      {:telemetry_metrics, "~> 1.0"},
-      {:telemetry_poller, "~> 1.0"},
-      {:gettext, "~> 1.0"},
-      {:jason, "~> 1.2"},
-      {:req, "~> 0.5"},
-      {:yaml_elixir, "~> 2.11"},
-      {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      # Required to run "mix format" on ~H/.heex files from the umbrella root
+      {:phoenix_live_view, ">= 0.0.0"}
     ]
   end
 
@@ -62,10 +42,13 @@ defmodule SearchAggregator.MixProject do
   #     $ mix setup
   #
   # See the documentation for `Mix` for more info on aliases.
+  #
+  # Aliases listed here are available only for this project
+  # and cannot be accessed from applications inside the apps/ folder.
   defp aliases do
     [
-      setup: ["deps.get"],
-      test: ["test"],
+      # run `mix setup` in all child apps
+      setup: ["cmd mix setup"],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]
   end

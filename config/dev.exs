@@ -6,7 +6,7 @@ import Config
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
-config :search_aggregator, SearchAggregatorWeb.Endpoint,
+config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
   http: [ip: {0, 0, 0, 0}],
   check_origin: false,
   code_reloader: true,
@@ -38,22 +38,22 @@ config :search_aggregator, SearchAggregatorWeb.Endpoint,
 # different ports.
 
 # Reload browser tabs when matching files change.
-config :search_aggregator, SearchAggregatorWeb.Endpoint,
+config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
   live_reload: [
     web_console_logger: true,
     patterns: [
       # Static assets, except user uploads
-      ~r"priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$",
+      ~r"apps/search_aggregator_web/priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$",
       # Gettext translations
-      ~r"priv/gettext/.*\.po$",
+      ~r"apps/search_aggregator_web/priv/gettext/.*\.po$",
       # Router, Controllers, LiveViews and LiveComponents
-      ~r"lib/search_aggregator_web/router\.ex$",
-      ~r"lib/search_aggregator_web/(controllers|live|components)/.*\.(ex|heex)$"
+      ~r"apps/search_aggregator_web/lib/search_aggregator_web/router\.ex$",
+      ~r"apps/search_aggregator_web/lib/search_aggregator_web/(controllers|live|components)/.*\.(ex|heex)$"
     ]
   ]
 
 # Enable dev routes for dashboard and mailbox
-config :search_aggregator, dev_routes: true
+config :search_aggregator_web, dev_routes: true
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
