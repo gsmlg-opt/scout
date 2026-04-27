@@ -426,6 +426,7 @@ defmodule SearchAggregatorWeb.SettingsLive do
   use SearchAggregatorWeb, :live_view
 
   alias SearchAggregator.Settings
+  alias SearchAggregator.YamlEncoder
 
   @impl true
   def mount(_params, _session, socket) do
@@ -739,7 +740,12 @@ defmodule SearchAggregatorWeb.EngineSettingsLive do
   @impl true
   def handle_event("edit_engine", %{"name" => name}, socket) do
     engine = Enum.find(socket.assigns.engines, &(&1["name"] == name))
-    engine_map = engine |> Map.new(fn {k, v} -> {to_string(k), to_string(v)} end)
+    engine_map =
+      engine
+      |> Map.new(fn {k, v} ->
+        v = if is_list(v), do: Enum.join(v, ", "), else: v
+        {to_string(k), to_string(v)}
+      end)
 
     form = engine_map |> to_form(as: :engine)
 
