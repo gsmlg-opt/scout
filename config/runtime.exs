@@ -30,6 +30,25 @@ config :search_aggregator, :settings_path, settings_path
 config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "6980"))]
 
+bun_version =
+  System.get_env("MIX_BUN_VERSION") ||
+    case System.cmd("bun", ["--version"]) do
+      {output, 0} -> String.trim(output)
+      _ -> nil
+    end
+
+if bun_version do
+  config :bun, version: bun_version
+end
+
+if path = System.get_env("MIX_BUN_PATH") do
+  config :bun, path: path
+end
+
+if path = System.get_env("MIX_TAILWIND_PATH") do
+  config :tailwind, path: path
+end
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

@@ -35,56 +35,30 @@ defmodule SearchAggregatorWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
+    <.dm_appbar title="SearchAggregator" sticky>
+      <:logo>
+        <a href="/" class="flex items-center gap-2">
+          <img src={~p"/images/logo.svg"} width="36" alt="logo" />
           <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
         </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <a href="https://hexdocs.pm/phoenix/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
-        </ul>
-      </div>
-    </header>
+      </:logo>
+      <:menu>
+        <.link navigate={~p"/"} class="text-primary-content/80 hover:text-primary-content">
+          Home
+        </.link>
+      </:menu>
+      <:user_profile>
+        <.dm_theme_switcher />
+      </:user_profile>
+    </.dm_appbar>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
+    <main class="bg-surface px-4 py-20 sm:px-6 lg:px-8">
       <div class="mx-auto max-w-2xl space-y-4">
         {render_slot(@inner_block)}
       </div>
     </main>
 
-    <.flash_group flash={@flash} />
-    """
-  end
-
-  @doc """
-  Shows the flash group with standard titles and content.
-
-  ## Examples
-
-      <.flash_group flash={@flash} />
-  """
-  attr :flash, :map, required: true, doc: "the map of flash messages"
-  attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
-
-  def flash_group(assigns) do
-    ~H"""
-    <div id={@id} aria-live="polite">
-      <.flash kind={:info} flash={@flash} />
-      <.flash kind={:error} flash={@flash} />
-    </div>
+    <.dm_flash_group flash={@flash} />
     """
   end
 end

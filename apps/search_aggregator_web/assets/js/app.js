@@ -1,19 +1,16 @@
-import {Socket} from "/assets/vendor/phoenix.mjs";
-import {LiveSocket} from "/assets/vendor/phoenix_live_view.esm.js";
+import "phoenix_html";
+import {Socket} from "phoenix";
+import {LiveSocket} from "phoenix_live_view";
+import * as DuskmoonHooks from "../../../../deps/phoenix_duskmoon/assets/js/hooks/index.js";
 
 const csrfToken = document
   .querySelector("meta[name='csrf-token']")
   .getAttribute("content");
 
 const liveSocket = new LiveSocket("/live", Socket, {
+  hooks: DuskmoonHooks,
   params: {_csrf_token: csrfToken}
 });
 
 liveSocket.connect();
 window.liveSocket = liveSocket;
-
-document.querySelectorAll("[role=alert][data-flash]").forEach((element) => {
-  element.addEventListener("click", () => {
-    element.setAttribute("hidden", "");
-  });
-});
