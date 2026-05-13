@@ -6,11 +6,10 @@ Scout intentionally does not index, persist documents, generate embeddings, or m
 
 ## Project Structure
 
-- `apps/scout` - fetch job lifecycle, settings, dispatch, agent execution, RabbitMQ helpers, health tracking.
-- `apps/scout_web` - Phoenix 1.8 API and LiveView dashboard.
-- `settings.yaml` - runtime settings for RabbitMQ queues, fetch policy, agent capacity, Lightpanda path, and URL security.
-- `docs/prd.md` - product requirements.
-- `docs/tdd.md` - technical design.
+- `apps/scout` — fetch job lifecycle, settings (YAML GenServer), dispatch (local + RabbitMQ), Lightpanda execution, retry policy, URL security, heartbeat.
+- `apps/scout_web` — Phoenix 1.8 API and LiveView dashboard.
+- `settings.yaml` — runtime settings for RabbitMQ queues, fetch policy, agent capacity, Lightpanda path, and URL security.
+- `docs/design.md` — design document.
 
 ## Requirements
 
@@ -65,7 +64,7 @@ Check job status:
 curl http://localhost:6980/api/fetch/JOB_ID
 ```
 
-Run an optional synchronous fetch:
+Run a synchronous fetch:
 
 ```sh
 curl -X POST http://localhost:6980/api/fetch/sync \

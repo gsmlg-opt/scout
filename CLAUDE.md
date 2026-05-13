@@ -11,58 +11,74 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Pre-commit Check (Compile, Format, Test):** `mix precommit` (Use this alias when you are done with all changes to catch warnings and run tests)
 - Default port is **6980** (override with `PORT`). Settings path overridable with `SETTINGS_PATH`.
 
-## Architecture & Structure
+## Architecture
 
-SearchAggregator is an **Elixir umbrella project** — a Phoenix 1.8 metasearch application that queries multiple external search engines in parallel and aggregates results. It provides both an interactive LiveView UI and a JSON API. **No database is required** — everything runs in memory from `settings.yaml`.
+Scout is an **Elixir umbrella project** — a distributed Markdown fetch system for AI agents. It accepts URL fetch jobs, dispatches them to agents, renders pages with Lightpanda, and returns Lightpanda's native Markdown output. Scout does not index, persist documents, or generate embeddings.
 
 ### Umbrella Apps
 
-- **`apps/search_aggregator`** — Core search orchestration: `Settings` GenServer (YAML loader), engine behaviour, HTTP dispatch, result normalization/deduplication.
-- **`apps/search_aggregator_web`** — Phoenix 1.8 web layer: LiveView (`SearchLive`) at `/`, JSON API controller at `/search`.
+- **`apps/scout`** — Core fetch pipeline: settings (YAML GenServer), job/result structs, dispatch (local + RabbitMQ), Lightpanda execution, retry policy, URL security, heartbeat.
+- **`apps/scout_web`** — Phoenix 1.8 web layer: LiveView dashboard at `/`, JSON API at `/api/fetch`.
 
-### Search Lifecycle
-
-There are two search modes:
-
-1. **Async (`Search.start/3`)** — Used by the LiveView. Fires parallel `Task` processes (one per engine), each sends `{:search_engine_result, ref, result}` back to the caller. Results stream in progressively as engines respond.
-2. **Sync (`Search.search/2`)** — Used by the JSON API. Waits for all engines to complete, then returns the merged result list.
-
-Both modes go through:
-- `Search.normalize_options/2` — resolves category, limit, engine_names, language defaults from settings.
-- `Search.enabled_engines/2` — filters by `disabled` flag, engine registration, category, and user-selected engines.
-- `Search.run_engine/4` — dispatches to the engine module (http mode → `module.search/3`; browser mode → `BrowserSimulator` placeholder).
-- `Search.merge_results/3` — deduplicates by normalized URL, boosts score for duplicates, sorts by score, truncates to limit.
-
-### Core Modules
-
-- **`SearchAggregator.Settings`** — GenServer that loads `settings.yaml` at startup, merges with defaults, normalizes engine configs. Call `Settings.get/0` anywhere; `Settings.reload!/0` for hot reload.
-- **`SearchAggregator.Search.Engine`** — Behaviour with `@callback search(binary(), map(), map()) :: {:ok, [Result.t()]} | {:error, term()}`.
-- **`SearchAggregator.Search.Result`** — Struct: `:title`, `:url`, `:engine`, `:content`, `:source`, `:score`, `:published_at`.
-- **`SearchAggregator.Search.HTTP`** — Thin wrapper over `Req` that auto-decodes JSON responses.
-- **`SearchAggregator.Search.BrowserSimulator`** — Placeholder for future Playwright-based browser engine mode.
-- **`SearchAggregator.Search.QueryParams`** — Parses URL query params into normalized opts and serializes opts back to query string for `push_patch`.
-
-### Supervision Tree
+### Core Pipeline
 
 ```
-SearchAggregator.Supervisor (one_for_one)
-  ├── Task.Supervisor (SearchAggregator.TaskSupervisor)
-  ├── SearchAggregator.Settings (GenServer)
+URL → Security.validate_url → Job.new → Dispatcher.dispatch
+  → Executor.fetch (Lightpanda CLI) → Result.success/failure
+  → ResultHandler → JobManager (in-memory lifecycle)
+```
+
+Two dispatch modes, controlled by `config :scout, :dispatch_mode`:
+
+1. **`:local`** (default) — Jobs run via `Task.Supervisor` on `Scout.TaskSupervisor`. No RabbitMQ needed.
+2. **`:rabbitmq`** — Jobs published to RabbitMQ queues; consumed by remote Scout agents running `Scout.Agent.AMQPConsumer`.
+
+### Key Modules
+
+- **`Scout`** — Public boundary. Delegates `submit_fetch/1`, `get_fetch/1`, `list_fetches/0`, `fetch_sync/1` to `Server.API`.
+- **`Scout.Settings`** — GenServer loading `settings.yaml` at startup, merged with defaults. Call `Settings.get/0`; `Settings.reload!/0` for hot reload.
+- **`Scout.Server.JobManager`** — GenServer tracking job lifecycle in-memory (queued → running → completed/failed/retrying). Handles retry scheduling via `Process.send_after`.
+- **`Scout.Server.Dispatcher`** — Routes jobs to RabbitMQ or local `Task.Supervisor` based on dispatch mode.
+- **`Scout.Agent.Executor`** — Runs a single fetch through `Lightpanda.fetch/2`, builds `Result` structs.
+- **`Scout.Agent.Lightpanda`** — Behaviour (`@callback fetch/2`) with pluggable adapter. Default adapter: `Scout.Agent.Lightpanda.CLI` which shells out to the `lightpanda` binary.
+- **`Scout.Agent.Heartbeat`** — Periodic GenServer broadcasting agent status to `AgentRegistry` and optionally RabbitMQ.
+- **`Scout.Server.AgentRegistry`** — In-memory registry of recent agent heartbeats, broadcast via PubSub.
+- **`Scout.Server.RabbitMQ`** — Queue declaration and publish helpers using the `amqp` library.
+- **`Scout.Fetch.Job`** — Job struct with URL validation, `new/1`, `retry/1`.
+- **`Scout.Fetch.Result`** — Result struct with `success/2`, `failure/3` constructors.
+- **`Scout.Fetch.RetryPolicy`** — Classifies retryable errors (timeout, 429, 502, 503, browser_crash) and computes exponential backoff with jitter.
+- **`Scout.Security`** — SSRF protection: validates schemes (http/https only), blocks localhost and private network CIDRs.
+- **`Scout.Markdown`** — Extracts title from `# heading` and counts words from Markdown text.
+
+### Supervision Tree (scout app)
+
+```
+Scout.Supervisor (one_for_one)
+  ├── Task.Supervisor (Scout.TaskSupervisor)
+  ├── Scout.Settings (GenServer)
+  ├── Phoenix.PubSub (Scout.PubSub)
+  ├── Scout.Server.AgentRegistry (GenServer)
+  ├── Scout.Server.JobManager (GenServer)
+  ├── Scout.Agent.Heartbeat (GenServer)
   ├── DNSCluster
-  └── Phoenix.PubSub (SearchAggregator.PubSub)
+  └── Scout.Agent.AMQPConsumer (only when agent_enabled: true)
 ```
+
+### Web Layer (scout_web app)
+
+- **`ScoutWeb.Router`** — `/` → `DashboardLive`, `POST /api/fetch` → create, `GET /api/fetch/:job_id` → show, `POST /api/fetch/sync` → sync.
+- **`ScoutWeb.DashboardLive`** — LiveView subscribing to `scout:jobs` and `scout:agents` PubSub topics. Shows job list, agent list, and a submit form.
+- **`ScoutWeb.FetchController`** — JSON API controller.
+- **`ScoutWeb.Layouts`** — App layout using `phoenix_duskmoon` components (`dm_appbar`, `dm_flash_group`, `dm_theme_switcher`).
 
 ## Project Guidelines
 
-## UI Library
+### UI Library
 
 This project uses the DuskMoon UI system:
 
 - **`phoenix_duskmoon`** — Phoenix LiveView UI component library (primary web UI)
 - **`@duskmoon-dev/core`** — Core Tailwind CSS plugin and utilities
-- **`@duskmoon-dev/css-art`** — CSS art utilities
-- **`@duskmoon-dev/elements`** — Base web components
-- **`@duskmoon-dev/art-elements`** — Art/decorative web components
 
 Do NOT use DaisyUI or other CSS component libraries. Do NOT use `core_components.ex` — use `phoenix_duskmoon` components instead.
 Use `@duskmoon-dev/core/plugin` as the Tailwind CSS plugin.
@@ -73,9 +89,6 @@ If you encounter missing features, bugs, or need functionality not yet available
 
 - **`phoenix_duskmoon`** — https://github.com/gsmlg-dev/phoenix_duskmoon/issues
 - **`@duskmoon-dev/core`** — https://github.com/gsmlg-dev/duskmoon-dev/issues
-- **`@duskmoon-dev/css-art`** — https://github.com/gsmlg-dev/duskmoon-dev/issues
-- **`@duskmoon-dev/elements`** — https://github.com/gsmlg-dev/duskmoon-dev/issues
-- **`@duskmoon-dev/art-elements`** — https://github.com/gsmlg-dev/duskmoon-dev/issues
 
 ### Elixir Best Practices
 - **HTTP Client:** Use the included `Req` library for HTTP requests. **Avoid** `:httpoison`, `:tesla`, and `:httpc`.
