@@ -1,0 +1,27 @@
+general:
+  instance_name: Test Scout
+  default_region: test
+  request_timeout_ms: 1000
+
+rabbitmq:
+  enabled: false
+
+fetch:
+  default_timeout_ms: 1000
+  max_timeout_ms: 2000
+  browser:
+    wait_until: network_idle
+    wait_for:
+    javascript: true
+  retry:
+    max_attempts: 2
+    base_backoff_ms: 10
+    max_backoff_ms: 20
+    jitter: false
+
+agent:
+  id: test-agent-1
+  region: test
+  heartbeat_interval_ms: 60000
+  capacity: 4
+  lightpanda_path: lightpanda

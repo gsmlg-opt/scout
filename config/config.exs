@@ -7,18 +7,18 @@
 # General application configuration
 import Config
 
-config :search_aggregator,
+config :scout,
   generators: [timestamp_type: :utc_datetime]
 
 # Configure the endpoint
-config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
+config :scout_web, ScoutWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [html: SearchAggregatorWeb.ErrorHTML, json: SearchAggregatorWeb.ErrorJSON],
+    formats: [html: ScoutWeb.ErrorHTML, json: ScoutWeb.ErrorJSON],
     layout: false
   ],
-  pubsub_server: SearchAggregator.PubSub,
+  pubsub_server: Scout.PubSub,
   live_view: [signing_salt: "GhjRd1eC"]
 
 # Configure Elixir's Logger
@@ -29,22 +29,22 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-config :search_aggregator, :settings_path, Path.expand("../settings.yaml", __DIR__)
+config :scout, :settings_path, Path.expand("../settings.yaml", __DIR__)
 
 config :bun,
   version: "1.3.4",
-  search_aggregator_web: [
+  scout_web: [
     args:
       ~w(build assets/js/app.js --outdir=priv/static/assets --external /fonts/* --external /images/*),
-    cd: Path.expand("../apps/search_aggregator_web", __DIR__)
+    cd: Path.expand("../apps/scout_web", __DIR__)
   ]
 
 config :tailwind,
   version: "4.1.11",
   version_check: false,
-  search_aggregator_web: [
+  scout_web: [
     args: ~w(--input=assets/css/app.css --output=priv/static/assets/app.css),
-    cd: Path.expand("../apps/search_aggregator_web", __DIR__)
+    cd: Path.expand("../apps/scout_web", __DIR__)
   ]
 
 # Import environment specific config. This must remain at the bottom

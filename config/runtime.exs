@@ -12,22 +12,22 @@ import Config
 # If you use `mix release`, you need to explicitly enable the server
 # by passing the PHX_SERVER=true when you start it:
 #
-#     PHX_SERVER=true bin/search_aggregator start
+#     PHX_SERVER=true bin/scout start
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
 if System.get_env("PHX_SERVER") do
-  config :search_aggregator_web, SearchAggregatorWeb.Endpoint, server: true
+  config :scout_web, ScoutWeb.Endpoint, server: true
 end
 
 settings_path =
   System.get_env("SETTINGS_PATH") ||
-    Application.get_env(:search_aggregator, :settings_path) ||
+    Application.get_env(:scout, :settings_path) ||
     Path.expand("../settings.yaml", __DIR__)
 
-config :search_aggregator, :settings_path, settings_path
+config :scout, :settings_path, settings_path
 
-config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
+config :scout_web, ScoutWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "6980"))]
 
 bun_version =
@@ -64,9 +64,9 @@ if config_env() == :prod do
 
   host = System.get_env("PHX_HOST") || "example.com"
 
-  config :search_aggregator, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+  config :scout, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
-  config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
+  config :scout_web, ScoutWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
       # Enable IPv6 and bind on all interfaces.
@@ -82,7 +82,7 @@ if config_env() == :prod do
   # To get SSL working, you will need to add the `https` key
   # to your endpoint configuration:
   #
-  #     config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
+  #     config :scout_web, ScoutWeb.Endpoint,
   #       https: [
   #         ...,
   #         port: 443,
@@ -104,7 +104,7 @@ if config_env() == :prod do
   # We also recommend setting `force_ssl` in your config/prod.exs,
   # ensuring no data is ever sent via http, always redirecting to https:
   #
-  #     config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
+  #     config :scout_web, ScoutWeb.Endpoint,
   #       force_ssl: [hsts: true]
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.

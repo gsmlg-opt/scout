@@ -1,0 +1,246 @@
+defmodule Scout.Server.JobManager do
+  @moduledoc """
+  In-memory lifecycle tracker for Scout fetch jobs.
+  """
+
+  use GenServer
+
+  alias Scout.Agent.Executor
+  alias Scout.Fetch.{Job, Result, RetryPolicy}
+  alias Scout.Server.Dispatcher
+  alias Scout.Settings
+
+  @topic "scout:jobs"
+
+  def start_link(_opts) do
+    GenServer.start_link(__MODULE__, %{jobs: %{}}, name: __MODULE__)
+  end
+
+  def submit(params), do: GenServer.call(__MODULE__, {:submit, params})
+  def get(job_id), do: GenServer.call(__MODULE__, {:get, job_id})
+  def list, do: GenServer.call(__MODULE__, :list)
+  def running_count, do: GenServer.call(__MODULE__, :running_count)
+  def mark_running(job_id), do: GenServer.cast(__MODULE__, {:running, job_id})
+  def handle_result(%Result{} = result), do: GenServer.cast(__MODULE__, {:result, result})
+
+  def fetch_sync(params) do
+    with {:ok, job} <- Job.new(params) do
+      {:ok, Executor.fetch(job)}
+    end
+  end
+
+  @impl true
+  def init(state), do: {:ok, state}
+
+  @impl true
+  def handle_call({:submit, params}, _from, state) do
+    case Job.new(params) do
+      {:ok, job} ->
+        entry = new_entry(job, "queued")
+        state = put_entry(state, entry)
+        broadcast(entry)
+
+        case Dispatcher.dispatch(job) do
+          :ok ->
+            {:reply, {:ok, public_entry(entry)}, state}
+
+          {:error, reason} ->
+            failed =
+              fail_entry(entry, %{
+                type: "dispatch_failed",
+                message: inspect(reason),
+                retryable: true
+              })
+
+            {:reply, {:error, failed.error}, put_entry(state, failed)}
+        end
+
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+    end
+  end
+
+  def handle_call({:get, job_id}, _from, state) do
+    reply =
+      state.jobs
+      |> Map.get(job_id)
+      |> case do
+        nil ->
+          {:error, %{type: "not_found", message: "fetch job was not found", retryable: false}}
+
+        entry ->
+          {:ok, public_entry(entry)}
+      end
+
+    {:reply, reply, state}
+  end
+
+  def handle_call(:list, _from, state) do
+    entries =
+      state.jobs
+      |> Map.values()
+      |> Enum.sort_by(& &1.inserted_at, :desc)
+      |> Enum.map(&public_entry/1)
+
+    {:reply, entries, state}
+  end
+
+  def handle_call(:running_count, _from, state) do
+    count =
+      Enum.count(state.jobs, fn {_job_id, entry} ->
+        entry.status == "running"
+      end)
+
+    {:reply, count, state}
+  end
+
+  @impl true
+  def handle_cast({:running, job_id}, state) do
+    state =
+      update_entry(state, job_id, fn entry ->
+        entry
+        |> Map.put(:status, "running")
+        |> Map.put(:next_attempt_ms, nil)
+        |> touch()
+      end)
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:result, %Result{} = result}, state) do
+    state =
+      update_entry(state, result.job_id, fn entry ->
+        apply_result(entry, result)
+      end)
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:retry, job_id}, state) do
+    case Map.get(state.jobs, job_id) do
+      nil ->
+        {:noreply, state}
+
+      entry ->
+        job = Job.retry(entry.job)
+        entry = %{entry | job: job, status: "queued", error: nil} |> touch()
+        state = put_entry(state, entry)
+        broadcast(entry)
+
+        case Dispatcher.dispatch(job) do
+          :ok ->
+            {:noreply, state}
+
+          {:error, reason} ->
+            failed =
+              fail_entry(entry, %{
+                type: "dispatch_failed",
+                message: inspect(reason),
+                retryable: true
+              })
+
+            {:noreply, put_entry(state, failed)}
+        end
+    end
+  end
+
+  defp apply_result(entry, %Result{ok: true} = result) do
+    entry
+    |> Map.put(:status, "completed")
+    |> Map.put(:result, Result.to_map(result))
+    |> Map.put(:error, nil)
+    |> Map.put(:next_attempt_ms, nil)
+    |> touch()
+  end
+
+  defp apply_result(entry, %Result{} = result) do
+    if RetryPolicy.retryable?(result) and entry.job.attempt < entry.job.max_attempts do
+      delay_ms = RetryPolicy.delay_ms(entry.job.attempt, Settings.get())
+      Process.send_after(self(), {:retry, entry.job.job_id}, delay_ms)
+
+      entry
+      |> Map.put(:status, "retrying")
+      |> Map.put(:result, Result.to_map(result))
+      |> Map.put(:error, result.error)
+      |> Map.put(:next_attempt_ms, delay_ms)
+      |> touch()
+    else
+      entry
+      |> Map.put(:status, "failed")
+      |> Map.put(:result, Result.to_map(result))
+      |> Map.put(:error, result.error)
+      |> Map.put(:next_attempt_ms, nil)
+      |> touch()
+    end
+  end
+
+  defp new_entry(%Job{} = job, status) do
+    now = timestamp()
+
+    %{
+      job: job,
+      status: status,
+      result: nil,
+      error: nil,
+      inserted_at: now,
+      updated_at: now,
+      next_attempt_ms: nil
+    }
+  end
+
+  defp fail_entry(entry, error) do
+    entry
+    |> Map.put(:status, "failed")
+    |> Map.put(:error, error)
+    |> Map.put(:next_attempt_ms, nil)
+    |> touch()
+  end
+
+  defp update_entry(state, job_id, callback) do
+    case Map.get(state.jobs, job_id) do
+      nil ->
+        state
+
+      entry ->
+        entry = callback.(entry)
+        state = put_entry(state, entry)
+        broadcast(entry)
+        state
+    end
+  end
+
+  defp put_entry(state, entry) do
+    put_in(state, [:jobs, entry.job.job_id], entry)
+  end
+
+  defp touch(entry), do: %{entry | updated_at: timestamp()}
+
+  defp public_entry(entry) do
+    %{
+      job_id: entry.job.job_id,
+      status: entry.status,
+      url: entry.job.url,
+      timeout_ms: entry.job.timeout_ms,
+      priority: entry.job.priority,
+      region_hint: entry.job.region_hint,
+      attempt: entry.job.attempt,
+      max_attempts: entry.job.max_attempts,
+      inserted_at: entry.inserted_at,
+      updated_at: entry.updated_at,
+      next_attempt_ms: entry.next_attempt_ms,
+      result: entry.result,
+      error: entry.error
+    }
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
+  end
+
+  defp broadcast(entry) do
+    if Process.whereis(Scout.PubSub) do
+      Phoenix.PubSub.broadcast(Scout.PubSub, @topic, {:job_updated, public_entry(entry)})
+    end
+  end
+
+  defp timestamp, do: DateTime.utc_now() |> DateTime.to_iso8601()
+end

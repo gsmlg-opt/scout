@@ -6,15 +6,15 @@ import Config
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
-config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
+config :scout_web, ScoutWeb.Endpoint,
   http: [ip: {0, 0, 0, 0}],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
   secret_key_base: "fnKoDS630Dq3g/q+6FsbZgjTyq3zzTbTJOwZUYo2l7OMSBj0TK4N8dx3rHmbgMNN",
   watchers: [
-    tailwind: {Tailwind, :install_and_run, [:search_aggregator_web, ~w(--watch)]},
-    bun: {Bun, :install_and_run, [:search_aggregator_web, ~w(--sourcemap=inline --watch)]}
+    tailwind: {Tailwind, :install_and_run, [:scout_web, ~w(--watch)]},
+    bun: {Bun, :install_and_run, [:scout_web, ~w(--sourcemap=inline --watch)]}
   ]
 
 # ## SSL Support
@@ -41,22 +41,22 @@ config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
 # different ports.
 
 # Reload browser tabs when matching files change.
-config :search_aggregator_web, SearchAggregatorWeb.Endpoint,
+config :scout_web, ScoutWeb.Endpoint,
   live_reload: [
     web_console_logger: true,
     patterns: [
       # Static assets, except user uploads
-      ~r"apps/search_aggregator_web/priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$",
+      ~r"apps/scout_web/priv/static/(?!uploads/).*\.(js|css|png|jpeg|jpg|gif|svg)$",
       # Gettext translations
-      ~r"apps/search_aggregator_web/priv/gettext/.*\.po$",
+      ~r"apps/scout_web/priv/gettext/.*\.po$",
       # Router, Controllers, LiveViews and LiveComponents
-      ~r"apps/search_aggregator_web/lib/search_aggregator_web/router\.ex$",
-      ~r"apps/search_aggregator_web/lib/search_aggregator_web/(controllers|live|components)/.*\.(ex|heex)$"
+      ~r"apps/scout_web/lib/scout_web/router\.ex$",
+      ~r"apps/scout_web/lib/scout_web/(controllers|live|components)/.*\.(ex|heex)$"
     ]
   ]
 
 # Enable dev routes for dashboard and mailbox
-config :search_aggregator_web, dev_routes: true
+config :scout_web, dev_routes: true
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
