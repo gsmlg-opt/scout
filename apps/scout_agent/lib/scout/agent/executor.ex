@@ -3,7 +3,7 @@ defmodule Scout.Agent.Executor do
   Executes a single fetch job through Lightpanda.
   """
 
-  alias Scout.Agent.Lightpanda
+  alias Scout.Agent.LightpandaPool
   alias Scout.Fetch.{Job, Result}
   alias Scout.Markdown
   alias Scout.Settings
@@ -18,7 +18,7 @@ defmodule Scout.Agent.Executor do
       |> Map.put("timeout_ms", job.timeout_ms)
       |> Map.put("lightpanda_path", agent["lightpanda_path"])
 
-    case Lightpanda.fetch(job.url, opts) do
+    case LightpandaPool.fetch(job.url, opts) do
       {:ok, payload} ->
         markdown = payload[:markdown] || payload["markdown"] || ""
 

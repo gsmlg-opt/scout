@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Scout is an Elixir umbrella project with two apps. `apps/scout` contains the core fetch pipeline: settings, URL security, job lifecycle, dispatch, RabbitMQ integration, Lightpanda execution, retry logic, and agent heartbeat code. `apps/scout_web` contains the Phoenix 1.8 web layer, including the LiveView dashboard, JSON API controllers, layouts, static assets, gettext files, and web tests. Shared runtime configuration lives in `config/`; root `settings.yaml` controls queues, fetch policy, agent capacity, Lightpanda path, and URL security. Design notes live in `docs/`.
+Scout is an Elixir umbrella project. `apps/scout` is shared core code: settings, URL security, fetch structs, retry policy, Markdown helpers, and RabbitMQ helpers. `apps/scout_server` owns job lifecycle, agent registry, RabbitMQ dispatch/consumers, and the public `Scout.Server` API. `apps/scout_agent` owns RabbitMQ job consumption, heartbeat publishing, and the NimblePool-backed Lightpanda executor exposed by `Scout.Agent`. `apps/scout_web` contains the Phoenix 1.8 dashboard and JSON API.
 
 ## Build, Test, and Development Commands
 
@@ -17,11 +17,11 @@ Scout is an Elixir umbrella project with two apps. `apps/scout` contains the cor
 
 ## Coding Style & Naming Conventions
 
-Use the root `.formatter.exs`; run `mix format` before handoff. Follow standard Elixir module naming, with files matching modules under `lib/`, such as `Scout.Server.JobManager` in `apps/scout/lib/scout/server/job_manager.ex`. Test files should end in `_test.exs`. Prefer existing OTP boundaries and public APIs (`Scout.submit_fetch/1`, `Scout.get_fetch/1`) instead of reaching into GenServers directly. For UI, use `phoenix_duskmoon` components and DuskMoon assets; do not add DaisyUI or reintroduce `core_components.ex`.
+Use the root `.formatter.exs`; run `mix format` before handoff. Follow standard Elixir module naming, with files matching modules under `lib/`, such as `Scout.Server.JobManager` in `apps/scout_server/lib/scout/server/job_manager.ex`. Test files should end in `_test.exs`. Prefer public APIs (`Scout.Server.*`, `Scout.Agent.*`) instead of reaching into GenServers directly. For UI, use `phoenix_duskmoon` components and DuskMoon assets; do not add DaisyUI or reintroduce `core_components.ex`.
 
 ## Testing Guidelines
 
-Tests use ExUnit and Phoenix test helpers. Core tests are under `apps/scout/test`; web/controller/LiveView tests are under `apps/scout_web/test`. Add focused tests for URL validation, retry behavior, job lifecycle changes, API responses, and LiveView behavior when touched. Use fixtures from `test/support/fixtures/` where possible.
+Tests use ExUnit and Phoenix test helpers. Core tests are under `apps/scout/test`; server tests under `apps/scout_server/test`; agent tests under `apps/scout_agent/test`; web tests under `apps/scout_web/test`. Add focused tests for URL validation, retry behavior, job lifecycle changes, API responses, agent execution, and LiveView behavior when touched.
 
 ## Commit & Pull Request Guidelines
 
@@ -29,4 +29,4 @@ Recent history uses Conventional Commit style, for example `feat(scout): redesig
 
 ## Security & Configuration Tips
 
-Do not weaken SSRF protections in `Scout.Security` without tests. Local mode does not require RabbitMQ; distributed mode depends on RabbitMQ settings and `config :scout, :agent_enabled`. Lightpanda must be installed on agent hosts for real fetch execution.
+Do not weaken SSRF protections in `Scout.Security` without tests. The server-agent pipeline uses RabbitMQ; set `rabbitmq.enabled: true` in `settings.yaml` for real distributed dispatch. Lightpanda must be installed on agent hosts for real fetch execution.

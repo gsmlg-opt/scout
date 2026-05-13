@@ -43,13 +43,16 @@ defmodule ScoutWeb.MixProject do
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.1.0"},
       {:phoenix_duskmoon, "~> 9.0"},
+      {:telemetry_metrics, "~> 1.0"},
+      {:telemetry_poller, "~> 1.0"},
       {:bun, "~> 1.4", runtime: Mix.env() == :dev},
       {:tailwind, "~> 0.2", runtime: Mix.env() == :dev},
       {:lazy_html, ">= 0.1.0"},
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:bandit, "~> 1.5"},
-      {:scout, in_umbrella: true}
+      {:scout, in_umbrella: true},
+      {:scout_server, in_umbrella: true}
     ]
   end
 

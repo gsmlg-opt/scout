@@ -10,6 +10,6 @@ defmodule Scout.Agent.Lightpanda do
   end
 
   defp adapter do
-    Application.get_env(:scout, :lightpanda_adapter, Scout.Agent.Lightpanda.CLI)
+    Application.get_env(:scout_agent, :lightpanda_adapter, Scout.Agent.Lightpanda.CLI)
   end
 end

@@ -64,7 +64,7 @@ if config_env() == :prod do
 
   host = System.get_env("PHX_HOST") || "example.com"
 
-  config :scout, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+  config :scout_server, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
   config :scout_web, ScoutWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],

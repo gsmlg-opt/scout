@@ -1,4 +1,4 @@
-defmodule Scout.Server.RabbitMQ do
+defmodule Scout.RabbitMQ do
   @moduledoc """
   RabbitMQ publisher helpers for Scout jobs, results, failures, and heartbeats.
   """
@@ -8,8 +8,7 @@ defmodule Scout.Server.RabbitMQ do
   alias Scout.Settings
 
   def enabled? do
-    Settings.get()["rabbitmq"]["enabled"] or
-      Application.get_env(:scout, :dispatch_mode) == :rabbitmq
+    Settings.get()["rabbitmq"]["enabled"]
   end
 
   def publish_job(%Job{} = job) do

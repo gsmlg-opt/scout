@@ -4,7 +4,7 @@ defmodule ScoutWeb.FetchController do
   alias Scout.Fetch.Result
 
   def create(conn, params) do
-    case Scout.submit_fetch(params) do
+    case Scout.Server.submit_fetch(params) do
       {:ok, job} ->
         conn
         |> put_status(:accepted)
@@ -16,14 +16,14 @@ defmodule ScoutWeb.FetchController do
   end
 
   def show(conn, %{"job_id" => job_id}) do
-    case Scout.get_fetch(job_id) do
+    case Scout.Server.get_fetch(job_id) do
       {:ok, job} -> json(conn, job)
       {:error, error} -> render_error(conn, error)
     end
   end
 
   def sync(conn, params) do
-    case Scout.fetch_sync(params) do
+    case Scout.Server.fetch_sync(params) do
       {:ok, %Result{} = result} ->
         status = if result.ok, do: :ok, else: :unprocessable_entity
 

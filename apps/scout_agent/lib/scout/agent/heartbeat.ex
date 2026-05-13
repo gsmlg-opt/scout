@@ -1,0 +1,34 @@
+defmodule Scout.Agent.Heartbeat do
+  @moduledoc false
+
+  use GenServer
+
+  alias Scout.RabbitMQ
+  alias Scout.Settings
+
+  def start_link(_opts) do
+    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+  end
+
+  @impl true
+  def init(state) do
+    send(self(), :heartbeat)
+    {:ok, state}
+  end
+
+  @impl true
+  def handle_info(:heartbeat, state) do
+    heartbeat = Scout.Agent.status()
+
+    if RabbitMQ.enabled?() do
+      _ = RabbitMQ.publish_heartbeat(heartbeat)
+    end
+
+    Process.send_after(self(), :heartbeat, interval_ms())
+    {:noreply, state}
+  end
+
+  defp interval_ms do
+    Settings.get()["agent"]["heartbeat_interval_ms"]
+  end
+end

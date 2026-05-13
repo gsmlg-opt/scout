@@ -6,7 +6,9 @@ Scout intentionally does not index, persist documents, generate embeddings, or m
 
 ## Project Structure
 
-- `apps/scout` — fetch job lifecycle, settings (YAML GenServer), dispatch (local + RabbitMQ), Lightpanda execution, retry policy, URL security, heartbeat.
+- `apps/scout` — shared core: settings (YAML GenServer), fetch job/result structs, retry policy, URL security, Markdown helpers, and RabbitMQ helpers.
+- `apps/scout_server` — server runtime: job lifecycle, agent registry, RabbitMQ dispatch, result consumers, heartbeat consumers, and public `Scout.Server` API.
+- `apps/scout_agent` — agent runtime: RabbitMQ job consumer, heartbeat publisher, single-worker NimblePool Lightpanda executor, and public `Scout.Agent` API.
 - `apps/scout_web` — Phoenix 1.8 API and LiveView dashboard.
 - `settings.yaml` — runtime settings for RabbitMQ queues, fetch policy, agent capacity, Lightpanda path, and URL security.
 - `docs/design.md` — design document.
@@ -17,9 +19,7 @@ Scout intentionally does not index, persist documents, generate embeddings, or m
 - Erlang/OTP compatible with your Elixir version
 - Mix
 - Lightpanda on agent hosts for real fetch execution
-- RabbitMQ for distributed server/agent deployment
-
-The default development mode uses a local dispatcher, so RabbitMQ is not required for local UI/API smoke tests.
+- RabbitMQ for server/agent task dispatch
 
 ## Setup
 
@@ -72,22 +72,11 @@ curl -X POST http://localhost:6980/api/fetch/sync \
   -d '{"url":"https://example.com/docs/page"}'
 ```
 
-## Runtime Modes
+## Runtime Model
 
-Local dispatch is the default:
+`Scout.Server` always dispatches fetch jobs through RabbitMQ. `Scout.Agent` consumes jobs from RabbitMQ, runs one Lightpanda fetch at a time through a NimblePool-backed executor, and publishes results and heartbeat payloads back to RabbitMQ.
 
-```elixir
-config :scout, :dispatch_mode, :local
-```
-
-RabbitMQ dispatch:
-
-```elixir
-config :scout, :dispatch_mode, :rabbitmq
-config :scout, :agent_enabled, true
-```
-
-RabbitMQ queue names, regional queues, retry policy, agent capacity, and Lightpanda path are configured in `settings.yaml`.
+RabbitMQ queue names, regional queues, retry policy, agent capacity, and Lightpanda path are configured in `settings.yaml`. Set `rabbitmq.enabled: true` when running the distributed server/agent pipeline.
 
 ## Development
 

@@ -1,14 +1,13 @@
-defmodule Scout.Agent.AMQPConsumer do
+defmodule Scout.Server.HeartbeatConsumer do
   @moduledoc """
-  RabbitMQ consumer for Scout Agent mode.
+  RabbitMQ consumer for Scout agent heartbeat payloads.
   """
 
   use GenServer
 
   alias AMQP.Basic
-  alias Scout.Agent.Executor
-  alias Scout.Fetch.{Job, Result}
-  alias Scout.Server.RabbitMQ
+  alias Scout.RabbitMQ
+  alias Scout.Server.AgentRegistry
   alias Scout.Settings
 
   def start_link(opts) do
@@ -16,9 +15,9 @@ defmodule Scout.Agent.AMQPConsumer do
   end
 
   @impl true
-  def init(_opts) do
+  def init(opts) do
     with {:ok, connection, channel} <- RabbitMQ.open_channel(),
-         queue <- Settings.get()["rabbitmq"]["queues"]["jobs"],
+         queue <- Settings.get()["rabbitmq"]["queues"][Keyword.fetch!(opts, :queue)],
          {:ok, _consumer_tag} <- Basic.consume(channel, queue, nil, no_ack: false) do
       {:ok, %{connection: connection, channel: channel}}
     else
@@ -28,21 +27,10 @@ defmodule Scout.Agent.AMQPConsumer do
 
   @impl true
   def handle_info({:basic_deliver, payload, meta}, state) do
-    result =
-      with {:ok, map} <- Jason.decode(payload),
-           {:ok, job} <- Job.from_map(map) do
-        Executor.fetch(job)
-      else
-        error ->
-          %Result{
-            job_id: nil,
-            ok: false,
-            url: nil,
-            error: %{type: "invalid_job", message: inspect(error), retryable: false}
-          }
-      end
+    with {:ok, heartbeat} <- Jason.decode(payload) do
+      AgentRegistry.update_heartbeat(heartbeat)
+    end
 
-    _ = RabbitMQ.publish_result(result)
     Basic.ack(state.channel, meta.delivery_tag)
     {:noreply, state}
   end

@@ -1,14 +1,8 @@
 defmodule Scout do
   @moduledoc """
-  Public boundary for Scout fetch jobs.
+  Shared core for Scout umbrella applications.
 
-  Scout is intentionally narrow: URL in, Lightpanda-rendered Markdown out.
+  Use `Scout.Server` for server-side job APIs and `Scout.Agent` for agent-side
+  fetch execution.
   """
-
-  alias Scout.Server.API
-
-  defdelegate submit_fetch(params), to: API
-  defdelegate get_fetch(job_id), to: API
-  defdelegate list_fetches(), to: API
-  defdelegate fetch_sync(params), to: API
 end

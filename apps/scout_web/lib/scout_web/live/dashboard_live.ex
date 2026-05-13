@@ -1,8 +1,6 @@
 defmodule ScoutWeb.DashboardLive do
   use ScoutWeb, :live_view
 
-  alias Scout.Server.{AgentRegistry, API}
-
   @jobs_topic "scout:jobs"
   @agents_topic "scout:agents"
 
@@ -13,8 +11,8 @@ defmodule ScoutWeb.DashboardLive do
       Phoenix.PubSub.subscribe(Scout.PubSub, @agents_topic)
     end
 
-    jobs = API.list_fetches()
-    agents = AgentRegistry.list_agents()
+    jobs = Scout.Server.list_fetches()
+    agents = Scout.Server.list_agents()
 
     {:ok,
      socket
@@ -30,9 +28,9 @@ defmodule ScoutWeb.DashboardLive do
 
   @impl true
   def handle_event("submit_fetch", %{"fetch" => params}, socket) do
-    case API.submit_fetch(params) do
+    case Scout.Server.submit_fetch(params) do
       {:ok, job} ->
-        jobs = API.list_fetches()
+        jobs = Scout.Server.list_fetches()
 
         {:noreply,
          socket
@@ -50,12 +48,12 @@ defmodule ScoutWeb.DashboardLive do
   def handle_info({:job_updated, job}, socket) do
     {:noreply,
      socket
-     |> assign_job_stats(API.list_fetches())
+     |> assign_job_stats(Scout.Server.list_fetches())
      |> stream_insert(:jobs, job, at: 0)}
   end
 
   def handle_info({:agent_updated, agent}, socket) do
-    agents = AgentRegistry.list_agents()
+    agents = Scout.Server.list_agents()
 
     {:noreply,
      socket

@@ -24,3 +24,5 @@ config :phoenix,
 config :scout,
        :settings_path,
        Path.expand("../apps/scout_web/test/support/fixtures/settings.yaml", __DIR__)
+
+config :scout_agent, :lightpanda_adapter, Scout.Test.FakeLightpanda

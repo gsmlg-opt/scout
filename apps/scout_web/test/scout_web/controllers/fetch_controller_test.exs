@@ -2,15 +2,12 @@ defmodule ScoutWeb.FetchControllerTest do
   use ScoutWeb.ConnCase, async: false
 
   setup do
-    previous_adapter = Application.get_env(:scout, :lightpanda_adapter)
-    previous_dispatch = Application.get_env(:scout, :dispatch_mode)
+    previous_publisher = Application.get_env(:scout_server, :job_publisher)
 
-    Application.put_env(:scout, :lightpanda_adapter, Scout.Test.FakeLightpanda)
-    Application.put_env(:scout, :dispatch_mode, :local)
+    Application.put_env(:scout_server, :job_publisher, __MODULE__.Publisher)
 
     on_exit(fn ->
-      restore_env(:lightpanda_adapter, previous_adapter)
-      restore_env(:dispatch_mode, previous_dispatch)
+      restore_env(:scout_server, :job_publisher, previous_publisher)
     end)
 
     :ok
@@ -22,7 +19,7 @@ defmodule ScoutWeb.FetchControllerTest do
     body = json_response(conn, 202)
 
     assert %{"job_id" => job_id, "status" => "queued"} = body
-    assert {:ok, _job} = Scout.get_fetch(job_id)
+    assert {:ok, _job} = Scout.Server.get_fetch(job_id)
   end
 
   test "rejects private network targets", %{conn: conn} do
@@ -40,6 +37,30 @@ defmodule ScoutWeb.FetchControllerTest do
     assert body["markdown"] =~ "# Example Documentation"
   end
 
-  defp restore_env(key, nil), do: Application.delete_env(:scout, key)
-  defp restore_env(key, value), do: Application.put_env(:scout, key, value)
+  defp restore_env(app, key, nil), do: Application.delete_env(app, key)
+  defp restore_env(app, key, value), do: Application.put_env(app, key, value)
+
+  defmodule Publisher do
+    alias Scout.Fetch.Result
+    alias Scout.Server.ResultHandler
+
+    def publish_job(job) do
+      Task.start(fn ->
+        markdown = "# Example Documentation\n\nFetched #{job.url}"
+
+        ResultHandler.handle_result(
+          Result.success(job, %{
+            markdown: markdown,
+            title: "Example Documentation",
+            final_url: job.url,
+            agent_id: "test-agent-1",
+            duration_ms: 1,
+            word_count: 4
+          })
+        )
+      end)
+
+      :ok
+    end
+  end
 end

@@ -5,7 +5,6 @@ defmodule Scout.Server.JobManager do
 
   use GenServer
 
-  alias Scout.Agent.Executor
   alias Scout.Fetch.{Job, Result, RetryPolicy}
   alias Scout.Server.Dispatcher
   alias Scout.Settings
@@ -13,7 +12,7 @@ defmodule Scout.Server.JobManager do
   @topic "scout:jobs"
 
   def start_link(_opts) do
-    GenServer.start_link(__MODULE__, %{jobs: %{}}, name: __MODULE__)
+    GenServer.start_link(__MODULE__, %{jobs: %{}, waiters: %{}}, name: __MODULE__)
   end
 
   def submit(params), do: GenServer.call(__MODULE__, {:submit, params})
@@ -24,9 +23,8 @@ defmodule Scout.Server.JobManager do
   def handle_result(%Result{} = result), do: GenServer.cast(__MODULE__, {:result, result})
 
   def fetch_sync(params) do
-    with {:ok, job} <- Job.new(params) do
-      {:ok, Executor.fetch(job)}
-    end
+    timeout_ms = Settings.get()["general"]["request_timeout_ms"]
+    GenServer.call(__MODULE__, {:fetch_sync, params}, timeout_ms + 1_000)
   end
 
   @impl true
@@ -40,19 +38,29 @@ defmodule Scout.Server.JobManager do
         state = put_entry(state, entry)
         broadcast(entry)
 
+        dispatch_reply(entry, state)
+
+      {:error, error} ->
+        {:reply, {:error, error}, state}
+    end
+  end
+
+  def handle_call({:fetch_sync, params}, from, state) do
+    case Job.new(params) do
+      {:ok, job} ->
+        entry = new_entry(job, "queued")
+        state = state |> put_entry(entry) |> put_waiter(job.job_id, from)
+        broadcast(entry)
+
         case Dispatcher.dispatch(job) do
           :ok ->
-            {:reply, {:ok, public_entry(entry)}, state}
+            Process.send_after(self(), {:sync_timeout, job.job_id}, job.timeout_ms)
+            {:noreply, state}
 
           {:error, reason} ->
-            failed =
-              fail_entry(entry, %{
-                type: "dispatch_failed",
-                message: inspect(reason),
-                retryable: true
-              })
-
-            {:reply, {:error, failed.error}, put_entry(state, failed)}
+            failed = fail_entry(entry, dispatch_error(reason))
+            GenServer.reply(from, {:error, failed.error})
+            {:noreply, state |> delete_waiter(job.job_id) |> put_entry(failed)}
         end
 
       {:error, error} ->
@@ -96,7 +104,7 @@ defmodule Scout.Server.JobManager do
 
   @impl true
   def handle_cast({:running, job_id}, state) do
-    state =
+    {state, _entry} =
       update_entry(state, job_id, fn entry ->
         entry
         |> Map.put(:status, "running")
@@ -108,15 +116,33 @@ defmodule Scout.Server.JobManager do
   end
 
   def handle_cast({:result, %Result{} = result}, state) do
-    state =
+    {state, entry} =
       update_entry(state, result.job_id, fn entry ->
         apply_result(entry, result)
       end)
+
+    state =
+      if entry && entry.status in ["completed", "failed"] do
+        reply_waiter(state, result.job_id, {:ok, result})
+      else
+        state
+      end
 
     {:noreply, state}
   end
 
   @impl true
+  def handle_info({:sync_timeout, job_id}, state) do
+    case Map.pop(state.waiters, job_id) do
+      {nil, _waiters} ->
+        {:noreply, state}
+
+      {from, waiters} ->
+        GenServer.reply(from, {:error, %{type: "timeout", message: "fetch timed out", retryable: true}})
+        {:noreply, %{state | waiters: waiters}}
+    end
+  end
+
   def handle_info({:retry, job_id}, state) do
     case Map.get(state.jobs, job_id) do
       nil ->
@@ -129,18 +155,8 @@ defmodule Scout.Server.JobManager do
         broadcast(entry)
 
         case Dispatcher.dispatch(job) do
-          :ok ->
-            {:noreply, state}
-
-          {:error, reason} ->
-            failed =
-              fail_entry(entry, %{
-                type: "dispatch_failed",
-                message: inspect(reason),
-                retryable: true
-              })
-
-            {:noreply, put_entry(state, failed)}
+          :ok -> {:noreply, state}
+          {:error, reason} -> {:noreply, put_entry(state, fail_entry(entry, dispatch_error(reason)))}
         end
     end
   end
@@ -200,18 +216,48 @@ defmodule Scout.Server.JobManager do
   defp update_entry(state, job_id, callback) do
     case Map.get(state.jobs, job_id) do
       nil ->
-        state
+        {state, nil}
 
       entry ->
         entry = callback.(entry)
         state = put_entry(state, entry)
         broadcast(entry)
-        state
+        {state, entry}
     end
   end
 
   defp put_entry(state, entry) do
     put_in(state, [:jobs, entry.job.job_id], entry)
+  end
+
+  defp put_waiter(state, job_id, from), do: put_in(state, [:waiters, job_id], from)
+
+  defp delete_waiter(state, job_id), do: update_in(state.waiters, &Map.delete(&1, job_id))
+
+  defp reply_waiter(state, job_id, reply) do
+    case Map.pop(state.waiters, job_id) do
+      {nil, _waiters} ->
+        state
+
+      {from, waiters} ->
+        GenServer.reply(from, reply)
+        %{state | waiters: waiters}
+    end
+  end
+
+  defp dispatch_reply(entry, state) do
+    case Dispatcher.dispatch(entry.job) do
+      :ok ->
+        {:reply, {:ok, public_entry(entry)}, state}
+
+      {:error, reason} ->
+        failed = fail_entry(entry, dispatch_error(reason))
+        {:reply, {:error, failed.error}, put_entry(state, failed)}
+    end
+  end
+
+  defp dispatch_error(reason) do
+    %{type: "dispatch_failed", message: inspect(reason), retryable: true}
   end
 
   defp touch(entry), do: %{entry | updated_at: timestamp()}

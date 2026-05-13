@@ -17,7 +17,9 @@ Scout is an **Elixir umbrella project** — a distributed Markdown fetch system 
 
 ### Umbrella Apps
 
-- **`apps/scout`** — Core fetch pipeline: settings (YAML GenServer), job/result structs, dispatch (local + RabbitMQ), Lightpanda execution, retry policy, URL security, heartbeat.
+- **`apps/scout`** — Shared core: settings (YAML GenServer), job/result structs, retry policy, URL security, Markdown helpers, and RabbitMQ helpers.
+- **`apps/scout_server`** — Server runtime: job lifecycle, agent registry, RabbitMQ dispatch, result consumers, heartbeat consumers, and public `Scout.Server` API.
+- **`apps/scout_agent`** — Agent runtime: RabbitMQ job consumer, heartbeat publisher, NimblePool Lightpanda executor, and public `Scout.Agent` API.
 - **`apps/scout_web`** — Phoenix 1.8 web layer: LiveView dashboard at `/`, JSON API at `/api/fetch`.
 
 ### Core Pipeline
@@ -28,22 +30,21 @@ URL → Security.validate_url → Job.new → Dispatcher.dispatch
   → ResultHandler → JobManager (in-memory lifecycle)
 ```
 
-Two dispatch modes, controlled by `config :scout, :dispatch_mode`:
-
-1. **`:local`** (default) — Jobs run via `Task.Supervisor` on `Scout.TaskSupervisor`. No RabbitMQ needed.
-2. **`:rabbitmq`** — Jobs published to RabbitMQ queues; consumed by remote Scout agents running `Scout.Agent.AMQPConsumer`.
+Dispatch is RabbitMQ-based. `Scout.Server` publishes jobs, consumes agent results and heartbeats, and never runs Lightpanda directly. `Scout.Agent` consumes jobs, serializes fetches through a single-worker NimblePool, and publishes results and heartbeats.
 
 ### Key Modules
 
-- **`Scout`** — Public boundary. Delegates `submit_fetch/1`, `get_fetch/1`, `list_fetches/0`, `fetch_sync/1` to `Server.API`.
+- **`Scout`** — Shared core namespace. Use `Scout.Server` and `Scout.Agent` for runtime APIs.
+- **`Scout.Server`** — Public server API: `submit_fetch/1`, `get_fetch/1`, `list_fetches/0`, `fetch_sync/1`, `list_agents/0`.
+- **`Scout.Agent`** — Public agent API: `fetch/1` and `status/0`.
 - **`Scout.Settings`** — GenServer loading `settings.yaml` at startup, merged with defaults. Call `Settings.get/0`; `Settings.reload!/0` for hot reload.
 - **`Scout.Server.JobManager`** — GenServer tracking job lifecycle in-memory (queued → running → completed/failed/retrying). Handles retry scheduling via `Process.send_after`.
-- **`Scout.Server.Dispatcher`** — Routes jobs to RabbitMQ or local `Task.Supervisor` based on dispatch mode.
-- **`Scout.Agent.Executor`** — Runs a single fetch through `Lightpanda.fetch/2`, builds `Result` structs.
+- **`Scout.Server.Dispatcher`** — Publishes jobs to RabbitMQ through `Scout.RabbitMQ`.
+- **`Scout.Agent.Executor`** — Runs a single fetch through `Scout.Agent.LightpandaPool`, builds `Result` structs.
 - **`Scout.Agent.Lightpanda`** — Behaviour (`@callback fetch/2`) with pluggable adapter. Default adapter: `Scout.Agent.Lightpanda.CLI` which shells out to the `lightpanda` binary.
 - **`Scout.Agent.Heartbeat`** — Periodic GenServer broadcasting agent status to `AgentRegistry` and optionally RabbitMQ.
 - **`Scout.Server.AgentRegistry`** — In-memory registry of recent agent heartbeats, broadcast via PubSub.
-- **`Scout.Server.RabbitMQ`** — Queue declaration and publish helpers using the `amqp` library.
+- **`Scout.RabbitMQ`** — Queue declaration and publish helpers using the `amqp` library.
 - **`Scout.Fetch.Job`** — Job struct with URL validation, `new/1`, `retry/1`.
 - **`Scout.Fetch.Result`** — Result struct with `success/2`, `failure/3` constructors.
 - **`Scout.Fetch.RetryPolicy`** — Classifies retryable errors (timeout, 429, 502, 503, browser_crash) and computes exponential backoff with jitter.
@@ -54,14 +55,19 @@ Two dispatch modes, controlled by `config :scout, :dispatch_mode`:
 
 ```
 Scout.Supervisor (one_for_one)
-  ├── Task.Supervisor (Scout.TaskSupervisor)
   ├── Scout.Settings (GenServer)
+
+Scout.Server.Supervisor (one_for_one)
   ├── Phoenix.PubSub (Scout.PubSub)
   ├── Scout.Server.AgentRegistry (GenServer)
   ├── Scout.Server.JobManager (GenServer)
+  ├── Scout.Server.ResultConsumer (when rabbitmq.enabled)
+  └── Scout.Server.HeartbeatConsumer (when rabbitmq.enabled)
+
+Scout.Agent.Supervisor (one_for_one)
+  ├── Scout.Agent.LightpandaPool (NimblePool, size 1)
   ├── Scout.Agent.Heartbeat (GenServer)
-  ├── DNSCluster
-  └── Scout.Agent.AMQPConsumer (only when agent_enabled: true)
+  └── Scout.Agent.AMQPConsumer (when rabbitmq.enabled)
 ```
 
 ### Web Layer (scout_web app)
