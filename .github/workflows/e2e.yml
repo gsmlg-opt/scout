@@ -67,6 +67,7 @@ jobs:
             --hostname rabbitmq \
             --network "${DOCKER_NETWORK}" \
             --user root \
+            -e HOME=/tmp \
             -e RABBITMQ_NODENAME=rabbit@rabbitmq \
             -e RABBITMQ_ERLANG_COOKIE=scout-e2e-cookie \
             rabbitmq:3-alpine
