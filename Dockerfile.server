@@ -3,7 +3,7 @@ ARG ALPINE_IMAGE=alpine:3.20
 
 FROM ${ELIXIR_IMAGE} AS builder
 
-RUN apk add --no-cache build-base git
+RUN apk add --no-cache build-base git nodejs npm
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN mix deps.get --only prod
 
 COPY . .
 
-RUN mix bun.install --if-missing && _build/bun install --cwd apps/scout_web --frozen-lockfile --ignore-scripts --verbose
+RUN npm install --prefix apps/scout_web --omit=optional --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org
 RUN mix do --app scout_web assets.deploy
 RUN mix release scout_server --overwrite
 
