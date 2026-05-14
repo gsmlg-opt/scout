@@ -12,6 +12,7 @@ Scout intentionally does not index, persist documents, generate embeddings, or m
 - `apps/scout_web` — Phoenix 1.8 API and LiveView dashboard.
 - `settings.yaml` — runtime settings for RabbitMQ queues, fetch policy, agent capacity, Lightpanda path, and URL security.
 - `docs/design.md` — design document.
+- `docs/deploy.md` — Docker image deployment guide.
 
 ## Requirements
 
@@ -77,6 +78,15 @@ curl -X POST http://localhost:6980/api/fetch/sync \
 `Scout.Server` always dispatches fetch jobs through RabbitMQ. `Scout.Agent` consumes jobs from RabbitMQ, runs one Lightpanda fetch at a time through a NimblePool-backed executor, and publishes results and heartbeat payloads back to RabbitMQ.
 
 RabbitMQ queue names, regional queues, retry policy, agent capacity, and Lightpanda path are configured in `settings.yaml`. Set `rabbitmq.enabled: true` when running the distributed server/agent pipeline.
+
+## Deployment
+
+Scout publishes separate Docker images for the server and agent:
+
+- `ghcr.io/gsmlg-dev/scout-server:<tag>`
+- `ghcr.io/gsmlg-dev/scout-agent:<tag>`
+
+See [`docs/deploy.md`](docs/deploy.md) for image builds, runtime configuration, Docker examples, and E2E verification.
 
 ## Development
 
