@@ -23,6 +23,7 @@ RUN mix deps.get --only prod
 
 COPY . .
 
+RUN mix bun.install --if-missing && _build/bun install --cwd apps/scout_web --frozen-lockfile --ignore-scripts --verbose
 RUN mix do --app scout_web assets.deploy
 RUN mix release scout_server --overwrite
 
