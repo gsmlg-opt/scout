@@ -1,0 +1,38 @@
+ARG ELIXIR_IMAGE=hexpm/elixir:1.18.4-erlang-28.4.2-alpine-3.20.9
+ARG ALPINE_IMAGE=alpine:3.20
+
+FROM ${ELIXIR_IMAGE} AS builder
+
+RUN apk add --no-cache build-base git
+
+WORKDIR /app
+
+ENV MIX_ENV=prod
+
+RUN mix local.hex --force && mix local.rebar --force
+
+COPY mix.exs mix.lock ./
+COPY config config
+COPY apps/scout/mix.exs apps/scout/mix.exs
+COPY apps/scout_server/mix.exs apps/scout_server/mix.exs
+COPY apps/scout_agent/mix.exs apps/scout_agent/mix.exs
+COPY apps/scout_web/mix.exs apps/scout_web/mix.exs
+
+RUN mix deps.get --only prod
+
+COPY . .
+
+RUN mix release scout_agent --overwrite
+
+FROM ${ALPINE_IMAGE}
+
+RUN apk add --no-cache ca-certificates libstdc++ ncurses-libs openssl
+
+WORKDIR /app
+
+ENV HOME=/app \
+    MIX_ENV=prod
+
+COPY --from=builder /app/_build/prod/rel/scout_agent ./
+
+CMD ["bin/scout_agent", "start"]

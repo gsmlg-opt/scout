@@ -8,7 +8,8 @@ defmodule Scout.Umbrella.MixProject do
       start_permanent: Mix.env() == :prod,
       listeners: [Phoenix.CodeReloader],
       deps: deps(),
-      aliases: aliases()
+      aliases: aliases(),
+      releases: releases()
     ]
   end
 
@@ -51,6 +52,31 @@ defmodule Scout.Umbrella.MixProject do
       # run `mix setup` in all child apps
       setup: ["cmd mix setup"],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+    ]
+  end
+
+  defp releases do
+    [
+      scout: [
+        applications: [
+          scout: :permanent,
+          scout_server: :permanent,
+          scout_web: :permanent
+        ]
+      ],
+      scout_server: [
+        applications: [
+          scout: :permanent,
+          scout_server: :permanent,
+          scout_web: :permanent
+        ]
+      ],
+      scout_agent: [
+        applications: [
+          scout: :permanent,
+          scout_agent: :permanent
+        ]
+      ]
     ]
   end
 end

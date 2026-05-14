@@ -1,0 +1,14 @@
+_build/
+deps/
+node_modules/
+apps/*/node_modules/
+.git/
+.github/
+.trees/
+cover/
+doc/
+tmp/
+erl_crash.dump
+*.ez
+*.db
+*.db-*
