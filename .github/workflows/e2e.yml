@@ -1,0 +1,164 @@
+name: E2E Docker Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Git ref to test from"
+        required: true
+        default: "main"
+        type: string
+      docker_image_tag:
+        description: "Docker image tag to test"
+        required: true
+        default: "latest"
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.docker_image_tag }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  REGISTRY: ghcr.io
+  SERVER_IMAGE: ghcr.io/gsmlg-dev/scout-server
+  AGENT_IMAGE: ghcr.io/gsmlg-dev/scout-agent
+  LIGHTPANDA_IMAGE: lightpanda/browser:nightly
+  DOCKER_CLI_IMAGE: docker:27-cli
+  DOCKER_NETWORK: scout-e2e
+
+jobs:
+  e2e:
+    name: Test Docker Images
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.GHCR_USERNAME || github.actor }}
+          password: ${{ secrets.GHCR_TOKEN || github.token }}
+
+      - name: Pull images
+        run: |
+          docker pull "${SERVER_IMAGE}:${{ inputs.docker_image_tag }}"
+          docker pull "${AGENT_IMAGE}:${{ inputs.docker_image_tag }}"
+          docker pull "${LIGHTPANDA_IMAGE}"
+          docker pull "${DOCKER_CLI_IMAGE}"
+
+      - name: Create Docker network
+        run: docker network create "${DOCKER_NETWORK}"
+
+      - name: Start RabbitMQ
+        run: |
+          docker run -d \
+            --name rabbitmq \
+            --network "${DOCKER_NETWORK}" \
+            rabbitmq:3-alpine
+
+          for attempt in $(seq 1 60); do
+            if docker exec rabbitmq rabbitmq-diagnostics -q ping; then
+              exit 0
+            fi
+
+            echo "Waiting for RabbitMQ (${attempt}/60)"
+            sleep 2
+          done
+
+          docker logs rabbitmq
+          exit 1
+
+      - name: Start Scout server and agent
+        run: |
+          chmod +x .github/e2e/bin/lightpanda
+          chmod +x .github/e2e/bin/extract-docker-cli
+          docker_cli_dir="${RUNNER_TEMP}/docker-cli"
+          .github/e2e/bin/extract-docker-cli "${docker_cli_dir}"
+
+          docker run --rm \
+            -v "${PWD}/.github/e2e/bin/lightpanda:/e2e/bin/lightpanda:ro" \
+            -v "${docker_cli_dir}/docker:/e2e/bin/docker:ro" \
+            -v "/var/run/docker.sock:/var/run/docker.sock" \
+            alpine:3.20 \
+            /e2e/bin/lightpanda version
+
+          secret_key_base="$(openssl rand -hex 64)"
+
+          docker run -d \
+            --name scout-server \
+            --network "${DOCKER_NETWORK}" \
+            -p 6980:6980 \
+            -e PHX_SERVER=true \
+            -e PHX_HOST=localhost \
+            -e PORT=6980 \
+            -e SECRET_KEY_BASE="${secret_key_base}" \
+            -e SETTINGS_PATH=/e2e/settings.yaml \
+            -v "${PWD}/.github/e2e/settings.yaml:/e2e/settings.yaml:ro" \
+            "${SERVER_IMAGE}:${{ inputs.docker_image_tag }}"
+
+          docker run -d \
+            --name scout-agent \
+            --network "${DOCKER_NETWORK}" \
+            -e SETTINGS_PATH=/e2e/settings.yaml \
+            -e LIGHTPANDA_IMAGE="${LIGHTPANDA_IMAGE}" \
+            -e LIGHTPANDA_DOCKER_NETWORK="${DOCKER_NETWORK}" \
+            -v "${PWD}/.github/e2e/settings.yaml:/e2e/settings.yaml:ro" \
+            -v "${PWD}/.github/e2e/bin/lightpanda:/e2e/bin/lightpanda:ro" \
+            -v "${docker_cli_dir}/docker:/e2e/bin/docker:ro" \
+            -v "/var/run/docker.sock:/var/run/docker.sock" \
+            "${AGENT_IMAGE}:${{ inputs.docker_image_tag }}"
+
+      - name: Wait for Scout server
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS "http://localhost:6980/" >/dev/null; then
+              exit 0
+            fi
+
+            echo "Waiting for Scout server (${attempt}/60)"
+            sleep 2
+          done
+
+          docker logs scout-server
+          exit 1
+
+      - name: Run sync fetch through agent
+        run: |
+          response_file="$(mktemp)"
+
+          curl -fsS \
+            -X POST "http://localhost:6980/api/fetch/sync" \
+            -H "content-type: application/json" \
+            -d '{"url":"https://example.com","timeout_ms":45000}' \
+            -o "${response_file}"
+
+          cat "${response_file}"
+
+          jq -e '.ok == true' "${response_file}"
+          jq -e '.agent_id == "e2e-agent-1"' "${response_file}"
+          jq -e '.markdown | test("Example Domain|example"; "i")' "${response_file}"
+
+      - name: Print container logs on failure
+        if: failure()
+        run: |
+          for container in rabbitmq scout-server scout-agent; do
+            echo "===== ${container} logs ====="
+            docker logs "${container}" || true
+          done
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f scout-agent scout-server rabbitmq || true
+          docker network rm "${DOCKER_NETWORK}" || true

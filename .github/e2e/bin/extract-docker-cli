@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+set -eu
+
+DOCKER_CLI_IMAGE="${DOCKER_CLI_IMAGE:-docker:27-cli}"
+target_dir="${1:-.github/e2e/docker-cli}"
+
+rm -rf "${target_dir}"
+mkdir -p "${target_dir}"
+
+docker run --rm \
+  -v "${target_dir}:/out" \
+  "${DOCKER_CLI_IMAGE}" \
+  sh -c 'cp /usr/local/bin/docker /out/docker && chmod +x /out/docker'

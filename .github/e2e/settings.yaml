@@ -1,0 +1,54 @@
+general:
+  instance_name: Scout E2E
+  default_region: local
+  request_timeout_ms: 60000
+
+rabbitmq:
+  enabled: true
+  url: amqp://guest:guest@rabbitmq:5672
+  queues:
+    jobs: scout.fetch.jobs
+    results: scout.fetch.results
+    failed: scout.fetch.failed
+    heartbeat: scout.agent.heartbeat
+  regional_queues:
+    eu: scout.fetch.jobs.eu
+    us: scout.fetch.jobs.us
+    asia: scout.fetch.jobs.asia
+
+fetch:
+  default_timeout_ms: 45000
+  max_timeout_ms: 60000
+  max_page_size_bytes: 5000000
+  browser:
+    wait_until:
+    wait_for:
+    javascript: true
+  retry:
+    max_attempts: 1
+    base_backoff_ms: 500
+    max_backoff_ms: 5000
+    jitter: false
+
+agent:
+  id: e2e-agent-1
+  region: local
+  heartbeat_interval_ms: 1000
+  capacity: 1
+  browser_instances: 1
+  page_concurrency: 1
+  lightpanda_path: /e2e/bin/lightpanda
+
+security:
+  allowed_schemes:
+    - http
+    - https
+  redirect_limit: 5
+  blocked_cidrs:
+    - 127.0.0.0/8
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - 169.254.0.0/16
+    - "::1/128"
+    - "fc00::/7"

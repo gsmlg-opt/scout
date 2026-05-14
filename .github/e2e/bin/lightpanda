@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+set -eu
+
+DOCKER_BIN="${DOCKER_BIN:-/e2e/bin/docker}"
+LIGHTPANDA_IMAGE="${LIGHTPANDA_IMAGE:-lightpanda/browser:nightly}"
+LIGHTPANDA_DOCKER_NETWORK="${LIGHTPANDA_DOCKER_NETWORK:-scout-e2e}"
+
+exec "${DOCKER_BIN}" run --rm \
+  --network "${LIGHTPANDA_DOCKER_NETWORK}" \
+  "${LIGHTPANDA_IMAGE}" \
+  lightpanda "$@"
