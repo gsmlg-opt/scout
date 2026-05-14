@@ -64,7 +64,10 @@ jobs:
         run: |
           docker run -d \
             --name rabbitmq \
+            --hostname rabbitmq \
             --network "${DOCKER_NETWORK}" \
+            -e RABBITMQ_NODENAME=rabbit@rabbitmq \
+            -e RABBITMQ_ERLANG_COOKIE=scout-e2e-cookie \
             rabbitmq:3-alpine
 
           for attempt in $(seq 1 60); do
