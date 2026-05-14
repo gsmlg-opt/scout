@@ -32,9 +32,15 @@ config :scout_web, ScoutWeb.Endpoint,
 
 bun_version =
   System.get_env("MIX_BUN_VERSION") ||
-    case System.cmd("bun", ["--version"]) do
-      {output, 0} -> String.trim(output)
-      _ -> nil
+    case System.find_executable("bun") do
+      nil ->
+        nil
+
+      executable ->
+        case System.cmd(executable, ["--version"]) do
+          {output, 0} -> String.trim(output)
+          _ -> nil
+        end
     end
 
 if bun_version do
